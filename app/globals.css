@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * EMRID Operations — design token system.
+ *
+ * Every colour is a CSS custom property expressed as HSL *channels*
+ * ("H S% L%") — never a finished colour. Tailwind wraps each token as
+ * `hsl(var(--token) / <alpha-value>)` (see tailwind.config.ts), so opacity
+ * utilities like `bg-primary/10` work against the same source of truth.
+ *
+ * Dark mode is a single `.dark` class on <html> (Tailwind `darkMode: "class"`).
+ * The ThemeProvider toggles that class; because components only ever reference
+ * semantic tokens (background, card, primary, …) and never raw colours, the
+ * entire design system re-themes from this one block.
+ *
+ * Operations theme: a calm zinc surface scale with a single indigo/violet
+ * accent. Distinct from the Patient Portal's teal-blue + emergency-red.
+ */
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Surfaces & text */
+  --background: 240 20% 99%;
+  --foreground: 240 10% 6%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 6%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 6%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 44%;
+
+  /* Lines & focus */
+  --border: 240 6% 90%;
+  --input: 240 6% 88%;
+  --ring: 243 75% 59%;
+
+  /* Indigo/violet accent — primary action */
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --primary-muted: 243 75% 96%;
+
+  /* Neutral interactive surfaces (hover, secondary) */
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 10% 12%;
+  --accent: 240 5% 95%;
+  --accent-foreground: 240 10% 12%;
+
+  /* Semantic — status & priority. Each has a solid colour + a subtle surface. */
+  --success: 142 71% 40%;
+  --success-foreground: 0 0% 100%;
+  --warning: 32 95% 44%;
+  --warning-foreground: 0 0% 100%;
+  --danger: 0 72% 51%;
+  --danger-foreground: 0 0% 100%;
+  --info: 217 91% 55%;
+  --info-foreground: 0 0% 100%;
+
+  /* Corner radius scale */
+  --radius: 0.75rem;
+}
+
+.dark {
+  /* Surfaces & text — a lifted near-black canvas with slightly lighter cards. */
+  --background: 240 10% 5%;
+  --foreground: 240 6% 96%;
+  --card: 240 8% 8%;
+  --card-foreground: 240 6% 96%;
+  --popover: 240 8% 9%;
+  --popover-foreground: 240 6% 96%;
+  --muted: 240 5% 14%;
+  --muted-foreground: 240 5% 62%;
+
+  --border: 240 5% 17%;
+  --input: 240 5% 20%;
+  --ring: 243 80% 70%;
+
+  /* Indigo reads brighter against dark surfaces. */
+  --primary: 243 80% 68%;
+  --primary-foreground: 240 10% 6%;
+  --primary-muted: 243 45% 16%;
+
+  --secondary: 240 5% 15%;
+  --secondary-foreground: 240 6% 96%;
+  --accent: 240 5% 16%;
+  --accent-foreground: 240 6% 96%;
+
+  --success: 142 64% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 32 90% 52%;
+  --warning-foreground: 240 10% 6%;
+  --danger: 0 72% 58%;
+  --danger-foreground: 0 0% 100%;
+  --info: 217 91% 64%;
+  --info-foreground: 240 10% 6%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Respect users who prefer less motion — disable the subtle UI animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

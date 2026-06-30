@@ -1,0 +1,30 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - export PATH="$HOME/.local/node/bin:$PATH"
+        - npm ci
+    build:
+      commands:
+        # Amplify injects console env vars into the BUILD but does NOT reliably
+        # forward server-only (non-NEXT_PUBLIC_) vars to the SSR runtime. Persist
+        # them into .env.production BEFORE `next build` so both build-time
+        # inlining (NEXT_PUBLIC_*) and SSR runtime reads work. Mirrors the
+        # Patient Platform's amplify.yml.
+        - |
+          for v in APP_ENV USE_MOCK_AUTH USE_MOCK_DATA USE_MOCK_UPLOADS \
+                   APP_AWS_REGION DYNAMODB_TABLE_NAME S3_DOCUMENT_BUCKET \
+                   NEXT_PUBLIC_APP_URL NEXT_PUBLIC_COGNITO_REGION \
+                   NEXT_PUBLIC_COGNITO_USER_POOL_ID NEXT_PUBLIC_COGNITO_CLIENT_ID; do
+            if [ -n "${!v}" ]; then echo "$v=${!v}" >> .env.production; fi
+          done
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
