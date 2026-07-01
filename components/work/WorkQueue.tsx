@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, UserPlus } from "lucide-react";
 import { Queue, type QueueBulkAction } from "@/components/queue/Queue";
 import { QueueCard } from "@/components/queue/QueueCard";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { transitionWorkItem } from "@/lib/work/server-actions";
+import { workActions } from "@/lib/work/actions";
 import { WORK_STATUSES, STATUS_META } from "@/lib/work/status";
 import { PRIORITIES, PRIORITY_META, byPriorityDesc } from "@/lib/work/priority";
 import { formatDate } from "@/lib/format";
@@ -34,10 +37,52 @@ export function WorkQueue({
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
-  const { toast } = useToast();
+  const { toast, success, error } = useToast();
+  const router = useRouter();
+  const byId = new Map(items.map((i) => [i.id, i] as const));
   const assignees = Array.from(
     new Set(items.map((i) => i.assignment.assigneeName ?? "Unassigned")),
   );
+
+  /**
+   * Run the primary bulk action for real — advance each selected item via its
+   * primary work action through the SAME `transitionWorkItem` server action the
+   * Workspace uses (persists + audits). Sequential + idempotent; refreshes so the
+   * queue re-projects. Non-actionable/non-customer items are counted as failures.
+   */
+  async function runPrimaryBulk(ids: string[]): Promise<void> {
+    const label = primaryBulkLabel ?? "Update";
+    let done = 0;
+    let failed = 0;
+    for (const id of ids) {
+      const item = byId.get(id);
+      const primary = item
+        ? workActions({
+            type: item.type,
+            status: item.status,
+            step: item.step ?? 0,
+          }).find((a) => a.kind === "primary")
+        : undefined;
+      if (!item || !primary) {
+        failed += 1;
+        continue;
+      }
+      try {
+        const res = await transitionWorkItem({
+          item,
+          toStatus: primary.toStatus,
+          step: primary.advances ? (item.step ?? 0) + 1 : item.step ?? 0,
+        });
+        if (res.ok) done += 1;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    if (done > 0) success(`${label}: ${done} item(s)`);
+    if (failed > 0) error(`${failed} item(s) couldn't be updated.`);
+    if (done > 0) router.refresh();
+  }
 
   const bulkActions: QueueBulkAction[] = [
     {
@@ -52,8 +97,9 @@ export function WorkQueue({
             id: "primary",
             label: primaryBulkLabel,
             icon: Check,
-            onRun: (ids: string[]) =>
-              toast(`${primaryBulkLabel} — ${ids.length} item(s) (mock)`, "mock"),
+            onRun: (ids: string[]) => {
+              void runPrimaryBulk(ids);
+            },
           },
         ]
       : []),
