@@ -3,6 +3,7 @@ import { getCustomerState } from "@/lib/customers/state";
 import { getProfileRepository } from "@/lib/data";
 import { mockStore, resetStore } from "@/lib/data/mock/store";
 import { readinessForCustomer } from "@/lib/customers/readiness";
+import type { Profile } from "@/lib/data/entities";
 
 beforeEach(() => resetStore());
 
@@ -64,7 +65,31 @@ describe("getCustomerState (repo-backed identity, card + emergency facets)", () 
     expect(after.score).toBe(40); // +25 emergency info, +15 emergency contact
   });
 
-  it("returns null for an unknown customer", async () => {
+  it("builds state from the Profile for a real (non-fixture) customer", async () => {
+    // A production customer has no MOCK_CUSTOMERS entry — the Profile is the
+    // source of truth. Gating on the fixture used to 404 every live customer.
+    const live: Profile = {
+      profileId: "profile_58af8916",
+      emrid: "EMR-LIVE-1",
+      firstName: "John",
+      lastName: "Doe",
+      dateOfBirth: "1990-01-01",
+      status: "ACTIVE",
+      verificationLevel: "UNVERIFIED",
+      identityVerificationStatus: "PENDING",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    };
+    mockStore.profiles.set(live.profileId, live);
+
+    const c = await getCustomerState("profile_58af8916");
+    expect(c).not.toBeNull();
+    expect(c?.id).toBe("profile_58af8916");
+    expect(c?.fullName).toBe("John Doe");
+    expect(c?.identityStatus).toBe("PENDING");
+  });
+
+  it("returns null only when unknown to both the repo and the fixture", async () => {
     expect(await getCustomerState("CUS-9999")).toBeNull();
   });
 });

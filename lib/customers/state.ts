@@ -44,7 +44,6 @@ export async function getCustomerState(
   customerId: string,
 ): Promise<Customer | null> {
   const fixture = getCustomer(customerId);
-  if (!fixture) return null;
 
   const [profile, devices, emergency] = await Promise.all([
     getProfileRepository().getProfile(customerId),
@@ -52,9 +51,14 @@ export async function getCustomerState(
     getEmergencyProfileRepository().getEmergencyProfile(customerId),
   ]);
 
+  // Unknown to BOTH the repository and the demo fixture ⇒ genuinely not found.
+  // A real production customer has no fixture entry, so the Profile IS the
+  // source of truth — gating on the fixture would 404 every live customer.
+  if (!fixture && !profile) return null;
+
   const identityStatus: IdentityStatus = profile?.identityVerificationStatus
     ? TO_IDENTITY_STATUS[profile.identityVerificationStatus]
-    : fixture.identityStatus;
+    : (fixture?.identityStatus ?? "UNVERIFIED");
 
   // Card facet from the device repo: prefer an ACTIVE device, else the first.
   const device = devices.find((d) => d.status === "ACTIVE") ?? devices[0];
@@ -62,16 +66,30 @@ export async function getCustomerState(
     ? TO_CARD_STATUS[device.status]
     : "NONE";
 
-  // Readiness facets derived from repositories (fail back to fixture only when
-  // a profile is entirely absent, which does not happen in mock).
   const profileComplete = profile
     ? isProfileComplete(profile)
-    : fixture.profileComplete;
+    : (fixture?.profileComplete ?? false);
 
-  // Repo identity + card + emergency override the fixture; only the static
-  // identifying details (email/mobile/location/joinedAt) remain fixture input.
+  // Identity/display base: the demo fixture when present, else the live Profile.
+  // Contact details (email/mobile/location) are not on the Profile item, so they
+  // stay blank for real customers until sourced — the workspace tolerates that.
+  const base: Customer = fixture ?? {
+    id: customerId,
+    fullName: profile
+      ? `${profile.firstName} ${profile.lastName}`.trim()
+      : customerId,
+    email: "",
+    joinedAt: profile?.createdAt ?? "",
+    profileComplete: false,
+    identityStatus: "UNVERIFIED",
+    emergencyInfoComplete: false,
+    emergencyContactsCount: 0,
+    cardStatus: "NONE",
+  };
+
+  // Repo identity + card + emergency override the base.
   return {
-    ...fixture,
+    ...base,
     profileComplete,
     identityStatus,
     emergencyInfoComplete: hasEmergencyInfo(emergency),
