@@ -105,34 +105,51 @@ export class DynamoWorkItemRepository implements WorkItemRepository {
       updatedAt: nowIso(),
     };
 
-    // Status is in both SKs → delete the old pair, put the new pair, atomically.
+    // Status is in both SKs → normally delete the old pair and put the new
+    // pair, atomically. BUT when the SK is unchanged (a same-status step
+    // advance, e.g. fulfilment "Mark encoded": IN_PROGRESS → IN_PROGRESS), a
+    // Delete + Put on the identical key is TWO operations on ONE item — DynamoDB
+    // rejects the whole transaction (ValidationException). In that case the Put
+    // alone overwrites in place. Computed per projection from the actual keys.
+    const oldQueueSk = workQueueSk(
+      current.status,
+      current.priority,
+      current.dueAt,
+      current.workItemId,
+    );
+    const newQueueSk = workQueueSk(
+      updated.status,
+      updated.priority,
+      updated.dueAt,
+      updated.workItemId,
+    );
+    const oldCustomerSk = workCustomerSk(current.status, current.workItemId);
+    const newCustomerSk = workCustomerSk(updated.status, updated.workItemId);
+
     await doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            Delete: {
-              TableName: table,
-              Key: {
-                PK: workPk(current.workDomain),
-                SK: workQueueSk(
-                  current.status,
-                  current.priority,
-                  current.dueAt,
-                  current.workItemId,
-                ),
-              },
-            },
-          },
+          ...(oldQueueSk !== newQueueSk
+            ? [
+                {
+                  Delete: {
+                    TableName: table,
+                    Key: { PK: workPk(current.workDomain), SK: oldQueueSk },
+                  },
+                },
+              ]
+            : []),
           { Put: { TableName: table, Item: workQueueItem(updated) } },
-          {
-            Delete: {
-              TableName: table,
-              Key: {
-                PK: profilePk(current.customerId),
-                SK: workCustomerSk(current.status, current.workItemId),
-              },
-            },
-          },
+          ...(oldCustomerSk !== newCustomerSk
+            ? [
+                {
+                  Delete: {
+                    TableName: table,
+                    Key: { PK: profilePk(current.customerId), SK: oldCustomerSk },
+                  },
+                },
+              ]
+            : []),
           { Put: { TableName: table, Item: workCustomerItem(updated) } },
         ],
       }),

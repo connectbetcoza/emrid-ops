@@ -113,6 +113,33 @@ describe("transition rewrites BOTH projection items consistently", () => {
     expect(deletes).toContainEqual({ PK: "PROFILE#CUS-9", SK: "WORK#OPEN#WI-1" });
   });
 
+  it("dynamo: a same-status step advance overwrites in place — never Delete+Put on one item", async () => {
+    // The live "Mark encoded" bug: IN_PROGRESS → IN_PROGRESS leaves both SKs
+    // unchanged, so a Delete + Put on the identical key is two operations on
+    // ONE item and DynamoDB rejects the whole transaction (ValidationException).
+    const { deps, sent } = fakeDeps(() => ({}));
+    const inProgress = { ...record, status: "IN_PROGRESS" as const, step: 1 };
+    await new DynamoWorkItemRepository(deps).transition(inProgress, {
+      toStatus: "IN_PROGRESS",
+      step: 2,
+    });
+
+    const tx = sent.find((c) => c.name === "TransactWriteCommand")!;
+    const items = tx.input.TransactItems as Array<Record<string, any>>;
+
+    // No Deletes; exactly the two projection Puts, carrying the advanced step.
+    expect(items.filter((i) => i.Delete)).toHaveLength(0);
+    const puts = items.filter((i) => i.Put).map((i) => i.Put.Item);
+    expect(puts).toHaveLength(2);
+    expect(puts.every((p) => p.step === 2 && p.status === "IN_PROGRESS")).toBe(true);
+
+    // The transaction never targets one item twice (the DynamoDB constraint).
+    const keys = items.map((i) =>
+      i.Put ? `${i.Put.Item.PK}|${i.Put.Item.SK}` : `${i.Delete.Key.PK}|${i.Delete.Key.SK}`,
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it("mock: both reads reflect the new status after transition", async () => {
     const repo = new MockWorkItemRepository();
     const before = (await repo.listByDomain("IDENTITY")).find((w) => w.status !== "DONE")!;
