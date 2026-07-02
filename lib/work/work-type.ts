@@ -22,6 +22,14 @@ export type WorkDomain =
   | "PRACTITIONER"
   | "SUPPORT";
 
+export const WORK_DOMAINS: readonly WorkDomain[] = [
+  "READINESS",
+  "IDENTITY",
+  "FULFILMENT",
+  "PRACTITIONER",
+  "SUPPORT",
+];
+
 export const WORK_DOMAIN_LABEL: Record<WorkDomain, string> = {
   READINESS: "Customer Readiness",
   IDENTITY: "Identity Verification",

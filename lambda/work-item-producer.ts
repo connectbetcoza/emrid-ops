@@ -12,9 +12,13 @@
  * With USE_MOCK_DATA=false the factory returns the DynamoDB repositories, which
  * resolve a lazy doc client from the Lambda execution role (no AWS keys).
  *
- * Build: bundle with esbuild using `--conditions=react-server` so the `server-only`
- * import in the data layer resolves to its no-op (the data modules are written for
- * RSC; this neutralises the guard for a plain Node runtime). See deploy docs.
+ * Build (verified working):
+ *   npx esbuild lambda/work-item-producer.ts --bundle --platform=node --target=node20 \
+ *     --format=cjs --tsconfig=tsconfig.json "--external:@aws-sdk/*" \
+ *     "--alias:server-only=./lambda/server-only-stub.js" \
+ *     --outfile=dist/lambda/producer/index.js
+ * The `server-only` RSC guard is not an installed package (Next shims it), so it
+ * is aliased to the empty local stub for the plain-Node Lambda runtime.
  *
  * Idempotency: deterministic work-item ids + the idempotent `create` mean a
  * stream retry (or a redelivered record) never duplicates work — so letting an
@@ -28,6 +32,7 @@ import {
   getAggregateRepository,
   getAuditRepository,
   getDeviceRepository,
+  getDirectoryRepository,
   getEmergencyProfileRepository,
   getProfileRepository,
   getWorkItemRepository,
@@ -48,6 +53,7 @@ export async function handler(event: DynamoDBStreamEvent): Promise<void> {
       emergencyRepo: getEmergencyProfileRepository(),
       aggregateRepo: getAggregateRepository(),
       auditRepo: getAuditRepository(),
+      directoryRepo: getDirectoryRepository(),
     },
     records,
     new Date().toISOString(),

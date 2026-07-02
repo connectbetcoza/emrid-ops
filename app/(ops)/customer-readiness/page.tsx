@@ -1,21 +1,32 @@
 import type { Metadata } from "next";
-import { Gauge } from "lucide-react";
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionPlaceholder } from "@/components/app/SectionPlaceholder";
+import { WorkQueue } from "@/components/work/WorkQueue";
+import { getWorkItemRepository } from "@/lib/data";
+import { recordToWorkItem } from "@/lib/work/record";
 
 export const metadata: Metadata = { title: "Customer Readiness" };
 
-export default function CustomerReadinessPage() {
+/**
+ * Customer Readiness — a projection over PERSISTED Work Items (the Ops work
+ * index) for the READINESS domain: profile-completion, emergency-info, and
+ * emergency-contact gaps. No profile query/scan. Selecting an item opens the
+ * single Customer Workspace.
+ */
+export default async function CustomerReadinessPage() {
+  const records = await getWorkItemRepository().listByDomain("READINESS");
+  const items = records.map(recordToWorkItem);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Customer Readiness"
-        description="How prepared each customer is — profile completeness, identity status, and active protection."
+        description="Readiness gaps, projected from the Work Engine. Open an item to work it in the customer's workspace."
       />
-      <SectionPlaceholder
-        icon={Gauge}
-        title="Customer Readiness is coming soon"
-        description="A readiness view and queue for moving customers from registered to fully protected."
+      <WorkQueue
+        items={items}
+        primaryBulkLabel="Mark complete"
+        emptyTitle="No readiness work"
+        emptyDescription="No readiness gaps are waiting. Every customer is on track."
       />
     </div>
   );

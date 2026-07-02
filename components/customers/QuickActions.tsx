@@ -1,50 +1,33 @@
-import {
-  BadgeCheck,
-  CreditCard,
-  MessageSquare,
-  ShieldCheck,
-  UserPlus,
-} from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { ActionPanel } from "@/components/workspace/ActionPanel";
-import { MockActionButton } from "@/components/feedback/MockActionButton";
-import type { Customer } from "@/lib/customers/types";
+import { WorkItemRow } from "@/components/work/WorkItemRow";
+import { byPriorityDesc } from "@/lib/work/priority";
+import type { WorkItem } from "@/lib/work/types";
 
 /**
- * Quick Actions — the operator's most likely next steps for this customer. The
- * primary action is contextual (the biggest lever toward protection); the rest
- * are common follow-ups. Inert in Sprint 2 — each gives clear "mock" feedback
- * on click via a toast, and is wired to a server action in a later sprint.
+ * Quick Actions — the operator's most likely next step for this customer: the
+ * HIGHEST-PRIORITY active work item, rendered with its real, persisted actions
+ * (the same generic `WorkItemRow` + `transitionWorkItem` path as Active Work).
+ * Nothing here is mocked: when there is no active work, that is stated as the
+ * positive fact it is.
  */
-export function QuickActions({ customer }: { customer: Customer }) {
-  const needsIdentity = customer.identityStatus !== "VERIFIED";
-  const needsCard = customer.cardStatus !== "ACTIVE";
+export function QuickActions({ work }: { work: WorkItem[] }) {
+  const top = work
+    .slice()
+    .sort((a, b) => byPriorityDesc(a.priority, b.priority))[0];
 
   return (
     <ActionPanel title="Quick actions">
-      {needsIdentity ? (
-        <MockActionButton action="Verify identity" variant="primary" size="sm">
-          <BadgeCheck className="h-4 w-4" aria-hidden />
-          Verify identity
-        </MockActionButton>
-      ) : needsCard ? (
-        <MockActionButton action="Issue card" variant="primary" size="sm">
-          <CreditCard className="h-4 w-4" aria-hidden />
-          Issue card
-        </MockActionButton>
+      {top ? (
+        <ul>
+          <WorkItemRow item={top} />
+        </ul>
       ) : (
-        <MockActionButton action="Confirm protection" variant="primary" size="sm">
-          <ShieldCheck className="h-4 w-4" aria-hidden />
-          Confirm protection
-        </MockActionButton>
+        <div className="flex items-center gap-2.5 rounded-md bg-success/10 px-3 py-2.5 text-sm text-success">
+          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+          No active work for this customer.
+        </div>
       )}
-      <MockActionButton action="Messaging" variant="secondary" size="sm">
-        <MessageSquare className="h-4 w-4" aria-hidden />
-        Message customer
-      </MockActionButton>
-      <MockActionButton action="Add guardian" variant="secondary" size="sm">
-        <UserPlus className="h-4 w-4" aria-hidden />
-        Add guardian
-      </MockActionButton>
     </ActionPanel>
   );
 }

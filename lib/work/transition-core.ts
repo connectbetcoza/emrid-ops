@@ -39,6 +39,20 @@ export function planTransition(input: {
     }
     return { kind: "AUDIT_ONLY" };
   }
+  // Readiness/support work is TRACKING work: the underlying truth (profile,
+  // emergency data, the support conversation) lives with the Patient Platform
+  // or outside the table; completing the item implies no shared-state write.
+  // Every transition is still audited — nothing silent.
+  if (
+    input.type === "COMPLETE_PROFILE" ||
+    input.type === "ADD_EMERGENCY_INFO" ||
+    input.type === "ADD_EMERGENCY_CONTACT" ||
+    input.type === "RESOLVE_SUPPORT_QUERY"
+  ) {
+    return { kind: "AUDIT_ONLY" };
+  }
+  // APPROVE_PRACTITIONER needs a real decision write (practitioner status on
+  // the shared table) — fails closed until that persistence slice lands.
   return {
     kind: "UNSUPPORTED",
     reason: `Persistence for work type ${input.type} is not wired yet.`,

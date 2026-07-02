@@ -112,6 +112,49 @@ export function cardCompletionForChange(
 }
 
 /**
+ * Which customer's Directory entry a change makes stale (null when none).
+ * Covers every profile-linked item the shared table carries: the profile
+ * itself, its emergency data, devices (canonical item), work items (either
+ * projection), and audit events (for last-activity). DIRECTORY items themselves
+ * are explicitly ignored — the directory upsert emits its own stream event and
+ * must never re-trigger a refresh (self-loop guard). Refreshes are
+ * recompute-from-truth, so double-firing (e.g. both work projections) is
+ * harmless, not duplicated state.
+ */
+export function directoryRefreshTarget(change: StreamChange): string | null {
+  const { PK, SK } = change.keys;
+  if (PK === "DIRECTORY") return null; // self-loop guard
+  const img = change.newImage ?? change.oldImage;
+  if (!img) return null;
+
+  if (PK.startsWith("PROFILE#")) {
+    // PROFILE / EMERGENCY / DEVICE#<id> / WORK#<...> items in the profile
+    // partition all describe one customer.
+    if (
+      SK === PROFILE_SK ||
+      SK === "EMERGENCY" ||
+      SK.startsWith("DEVICE#") ||
+      SK.startsWith("WORK#")
+    ) {
+      return PK.slice("PROFILE#".length) || null;
+    }
+    return null;
+  }
+  if (SK === DEVICE_SK) return str(img.profileId) ?? null;
+  if (PK.startsWith("WORK#")) return str(img.customerId) ?? null;
+  if (PK.startsWith("AUDIT#")) {
+    if (str(img.targetType) === "PROFILE") return str(img.targetId) ?? null;
+    const meta = img.metadata;
+    const fromMeta =
+      meta && typeof meta === "object"
+        ? (meta as Record<string, unknown>).profileId
+        : undefined;
+    return typeof fromMeta === "string" ? fromMeta : null;
+  }
+  return null;
+}
+
+/**
  * Build the Work Item record for an intent. OPEN, default priority (the rules'
  * base — unprotected-escalation needs full customer state and stays a generator
  * concern), due date derived from priority, display fields from the type meta.

@@ -211,6 +211,42 @@ export type NewAuditEvent = Omit<AuditEvent, "eventId" | "timestamp">;
  * by the Protected-Lives engine. Counts reflect Ops-observed crossings from a
  * seeded baseline — see OPERATOR_HANDOFF (backfill + reconciliation).
  */
+/**
+ * Customer Directory entry (`DIRECTORY / CUSTOMER#<profileId>`).
+ *
+ * ⚠️ Ops-OWNED — NOT mirrored. A producer-maintained projection so Operations
+ * can LIST real customers without scanning profiles (the no-scan law). Carries
+ * only OPERATIONAL fields: identity/verification state, the readiness factor
+ * inputs (presence booleans and counts — never medical content), the derived
+ * protection/readiness picture, and work/activity counters. Emergency medical
+ * values, documents, and clinical data stay in the Customer Workspace reads.
+ * Recomputed from source-of-truth reads on every relevant stream change, so a
+ * replay simply rewrites the same entry (idempotent by construction).
+ */
+export type DirectoryEntry = {
+  profileId: string;
+  emrid: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  identityStatus: IdentityVerificationStatus;
+  verificationLevel: VerificationLevel;
+  /** Derived by the same pure cores every surface uses (never hand-set). */
+  protectionStatus: "PROTECTED" | "IN_PROGRESS" | "UNPROTECTED";
+  readinessScore: number;
+  activeWorkCount: number;
+  lastActivityAt: ISODateString | null;
+  /** Practitioner association when known (populated by a later producer rule). */
+  practitionerId?: string;
+  // Readiness factor INPUTS (operational presence/counts only):
+  profileComplete: boolean;
+  emergencyInfoComplete: boolean;
+  emergencyContactsCount: number;
+  cardStatus: "NONE" | "PENDING" | "ACTIVE" | "SUSPENDED";
+  joinedAt: ISODateString;
+  updatedAt: ISODateString;
+};
+
 export type ProtectedLivesAggregate = {
   /** Customers currently PROTECTED. */
   protectedCount: number;

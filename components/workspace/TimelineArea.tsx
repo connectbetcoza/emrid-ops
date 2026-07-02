@@ -24,6 +24,14 @@ export function TimelineArea({
   title?: string;
   events: TimelineEvent[];
 }) {
+  if (events.length === 0) {
+    return (
+      <Card className="space-y-4">
+        <CardTitle>{title}</CardTitle>
+        <p className="text-sm text-muted-foreground">No recorded activity yet.</p>
+      </Card>
+    );
+  }
   return (
     <Card className="space-y-4">
       <CardTitle>{title}</CardTitle>

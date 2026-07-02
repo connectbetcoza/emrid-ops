@@ -1,6 +1,7 @@
 import type {
   AuditEvent,
   Device,
+  DirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
   Profile,
@@ -334,5 +335,49 @@ export function itemToProtectedLivesAggregate(
     inProgressCount: Number(item.inProgressCount ?? 0),
     lastUpdatedAt: typeof item.lastUpdatedAt === "string" ? item.lastUpdatedAt : "",
     version: Number(item.version ?? 0),
+  };
+}
+
+// ── Customer Directory (Ops-owned; not mirrored) ──────────────────────────────
+
+export const DIRECTORY_PK = "DIRECTORY";
+export const DIRECTORY_CUSTOMER_PREFIX_SK = "CUSTOMER#";
+export const directorySk = (profileId: string): string =>
+  `${DIRECTORY_CUSTOMER_PREFIX_SK}${profileId}`;
+
+/** DynamoDB item for a Customer Directory entry (single-partition list). */
+export function directoryItem(entry: DirectoryEntry): Record<string, unknown> {
+  return {
+    PK: DIRECTORY_PK,
+    SK: directorySk(entry.profileId),
+    type: "CUSTOMER_DIRECTORY",
+    ...entry,
+  };
+}
+
+/** Reconstruct a DirectoryEntry from a stored item (drops table keys). */
+export function itemToDirectoryEntry(
+  item: Record<string, unknown>,
+): DirectoryEntry {
+  return {
+    profileId: String(item.profileId),
+    emrid: String(item.emrid),
+    firstName: String(item.firstName),
+    lastName: String(item.lastName),
+    displayName: String(item.displayName),
+    identityStatus: item.identityStatus as DirectoryEntry["identityStatus"],
+    verificationLevel: item.verificationLevel as DirectoryEntry["verificationLevel"],
+    protectionStatus: item.protectionStatus as DirectoryEntry["protectionStatus"],
+    readinessScore: Number(item.readinessScore ?? 0),
+    activeWorkCount: Number(item.activeWorkCount ?? 0),
+    lastActivityAt:
+      typeof item.lastActivityAt === "string" ? item.lastActivityAt : null,
+    practitionerId: str(item.practitionerId),
+    profileComplete: Boolean(item.profileComplete),
+    emergencyInfoComplete: Boolean(item.emergencyInfoComplete),
+    emergencyContactsCount: Number(item.emergencyContactsCount ?? 0),
+    cardStatus: item.cardStatus as DirectoryEntry["cardStatus"],
+    joinedAt: String(item.joinedAt),
+    updatedAt: String(item.updatedAt),
   };
 }

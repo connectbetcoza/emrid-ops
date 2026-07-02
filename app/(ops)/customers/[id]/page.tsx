@@ -22,11 +22,8 @@ import {
   fulfilmentDevice,
   type FulfilmentPack,
 } from "@/lib/customers/fulfilment-pack";
-import {
-  customerNotes,
-  customerSummary,
-  customerTimeline,
-} from "@/lib/customers/workspace";
+import { customerNotes, customerSummary } from "@/lib/customers/workspace";
+import { auditTimeline } from "@/lib/customers/audit-timeline";
 import {
   getAuditRepository,
   getDeviceRepository,
@@ -62,8 +59,12 @@ export default async function CustomerWorkspacePage({
   if (!customer) notFound();
 
   const { status, readiness } = protectionFor(customer);
-  const records = await getWorkItemRepository().listForCustomer(customer.id);
+  const [records, auditEvents] = await Promise.all([
+    getWorkItemRepository().listForCustomer(customer.id),
+    getAuditRepository().listForProfile(customer.id),
+  ]);
   const work = activeWork(records.map(recordToWorkItem), customer.id);
+  const timeline = auditTimeline(auditEvents);
 
   // Card Fulfilment Pack — a Workspace section, shown while the customer has
   // active ISSUE_CARD work so the fulfilment officer never asks "what do I
@@ -125,8 +126,8 @@ export default async function CustomerWorkspacePage({
             ) : null}
           </>
         }
-        actions={<QuickActions customer={customer} />}
-        timeline={<TimelineArea events={customerTimeline(customer)} />}
+        actions={<QuickActions work={work} />}
+        timeline={<TimelineArea events={timeline} />}
       >
         <TabbedContentArea
           tabs={[

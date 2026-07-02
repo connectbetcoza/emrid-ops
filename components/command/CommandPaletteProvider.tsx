@@ -9,14 +9,16 @@ import {
   useState,
 } from "react";
 import { CommandPalette } from "@/components/command/CommandPalette";
-import { MOCK_COMMANDS } from "@/lib/search/mock";
+import type { CommandItem } from "@/lib/search/core";
+import { NAVIGATION_COMMANDS } from "@/lib/search/commands";
 
 /**
  * Hosts the universal command palette and its global keyboard shortcut
  * (⌘K / Ctrl K). Any client component under the provider can call
  * `useCommandPalette().open()` — the header SearchTrigger does. This is the
- * permanent home of search-first navigation: future sprints swap MOCK_COMMANDS
- * for a live source without touching call sites.
+ * permanent home of search-first navigation. Navigation commands derive from
+ * the real nav; LIVE customer commands are supplied by the server layout (from
+ * the Customer Directory) via the `customerCommands` prop.
  */
 type CommandPaletteContextValue = {
   open: () => void;
@@ -31,8 +33,11 @@ const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(
 
 export function CommandPaletteProvider({
   children,
+  customerCommands = [],
 }: {
   children: React.ReactNode;
+  /** Live customer results (serialisable), built server-side from the directory. */
+  customerCommands?: CommandItem[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -59,7 +64,11 @@ export function CommandPaletteProvider({
   return (
     <CommandPaletteContext.Provider value={value}>
       {children}
-      <CommandPalette open={isOpen} onClose={close} commands={MOCK_COMMANDS} />
+      <CommandPalette
+        open={isOpen}
+        onClose={close}
+        commands={[...NAVIGATION_COMMANDS, ...customerCommands]}
+      />
     </CommandPaletteContext.Provider>
   );
 }

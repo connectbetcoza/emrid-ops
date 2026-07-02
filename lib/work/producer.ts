@@ -2,6 +2,7 @@ import type {
   AggregateRepository,
   AuditRepository,
   DeviceRepository,
+  DirectoryRepository,
   EmergencyProfileRepository,
   ProfileRepository,
   WorkItemRepository,
@@ -9,12 +10,14 @@ import type {
 import {
   buildProducedWorkItem,
   cardCompletionForChange,
+  directoryRefreshTarget,
   producedWorkItemId,
   workIntentForChange,
   type CardCompletion,
   type StreamChange,
 } from "@/lib/work/producer-core";
 import { parseStreamRecord } from "@/lib/work/stream";
+import { buildDirectoryEntry } from "@/lib/customers/directory-core";
 import { protectionStatusFromFacets } from "@/lib/customers/readiness";
 import { hasEmergencyInfo } from "@/lib/customers/facets";
 import {
@@ -50,6 +53,7 @@ export type ProducerDeps = {
   emergencyRepo: EmergencyProfileRepository;
   aggregateRepo: AggregateRepository;
   auditRepo: AuditRepository;
+  directoryRepo: DirectoryRepository;
 };
 
 export type ProduceResult = {
@@ -133,10 +137,45 @@ async function completeCardWork(
   return { created: false, completed: true, workItemId };
 }
 
-export async function produceFromChange(
+/**
+ * Recompute one customer's Directory entry from source-of-truth reads and
+ * upsert it (last writer wins). Recompute-from-truth ⇒ replays rewrite the
+ * identical entry. A missing profile is a clean skip (e.g. an event for an
+ * entity Ops cannot resolve yet).
+ */
+export async function refreshDirectoryEntry(
+  deps: ProducerDeps,
+  profileId: string,
+  now: string,
+): Promise<boolean> {
+  const [profile, emergency, devices, workRecords, auditEvents] =
+    await Promise.all([
+      deps.profileRepo.getProfile(profileId),
+      deps.emergencyRepo.getEmergencyProfile(profileId),
+      deps.deviceRepo.listForCustomer(profileId),
+      deps.workRepo.listForCustomer(profileId),
+      deps.auditRepo.listForProfile(profileId),
+    ]);
+  if (!profile) return false;
+
+  await deps.directoryRepo.upsertEntry(
+    buildDirectoryEntry({
+      profile,
+      emergency,
+      devices,
+      workRecords,
+      auditEvents,
+      now,
+    }),
+  );
+  return true;
+}
+
+/** The work-item action (creation/completion) a change implies, if any. */
+async function applyWorkAction(
   deps: ProducerDeps,
   change: StreamChange,
-  now: string = nowIso(),
+  now: string,
 ): Promise<ProduceResult> {
   // A real activation completes card work (disjoint from creation: a device
   // reaching ACTIVE is never also a device/profile reaching PENDING).
@@ -165,6 +204,25 @@ export async function produceFromChange(
   const record = buildProducedWorkItem(intent, { subjectName, now });
   await deps.workRepo.create(record); // idempotent at the repo level too
   return { created: true, workItemId };
+}
+
+export async function produceFromChange(
+  deps: ProducerDeps,
+  change: StreamChange,
+  now: string = nowIso(),
+): Promise<ProduceResult> {
+  const result = await applyWorkAction(deps, change, now);
+
+  // Keep the Customer Directory projection fresh for ANY profile-linked change
+  // (profile, emergency, device, work, audit) — AFTER the work action so the
+  // entry reflects it. Runs even for "no-op" work changes (e.g. an emergency
+  // update changes readiness without implying work).
+  const refreshTarget = directoryRefreshTarget(change);
+  if (refreshTarget) {
+    await refreshDirectoryEntry(deps, refreshTarget, now);
+  }
+
+  return result;
 }
 
 /**

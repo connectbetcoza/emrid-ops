@@ -125,3 +125,8 @@ The application logic that turns a Patient-Platform shared-table write into the 
 - **Work Items are created by this producer** (on Patient-Platform submissions) and **completed by it on real activation** (above).
 - **`executeTransition`** adjusts the aggregate only when an *Ops* action crosses the PROTECTED boundary (e.g. identity approval for a customer whose card is already active); the **producer** owns the activation crossing. The two triggers are disjoint states, so a crossing is never double-counted.
 - **Any periodic reconciliation job** (drift from crossings neither observes, e.g. emergency-info added last) remains **operator-owned**.
+
+## 11. ✅ Customer Directory projection IMPLEMENTED (`DIRECTORY / CUSTOMER#<profileId>`)
+Operations lists real customers from a **producer-maintained directory projection** (Ops-owned item; single-partition Query — no scan, no GSI, no fixture). The producer refreshes a customer's entry on ANY profile-linked stream change (profile / emergency / device / work / audit), recomputing from source-of-truth reads (replay-safe by construction; DIRECTORY items are ignored by the producer to prevent self-loops). Entries carry operational fields only — never medical content.
+- **IAM:** covered by the existing producer grants (`GetItem`/`Query`/`PutItem`) — no new permissions, no new GSI.
+- **Operator actions:** (1) rebuild + redeploy the producer Lambda (bundle now includes the directory refresh); (2) one-off backfill for pre-existing profiles: `AWS_PROFILE=<admin> node scripts/backfill-directory.mjs` (scans profiles once — operator tooling only — and drives each through the production Lambda path with a status-unchanged "touch" event; `--dry-run` supported); (3) verify with a Query on `PK=DIRECTORY`.

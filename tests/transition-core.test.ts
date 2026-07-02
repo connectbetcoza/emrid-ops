@@ -27,7 +27,19 @@ describe("planTransition (work transition → shared write)", () => {
     );
   });
 
-  it("not-yet-wired domains fail closed", () => {
+  it("readiness/support tracking work is audit-only (the truth lives with the Patient data)", () => {
+    for (const type of [
+      "COMPLETE_PROFILE",
+      "ADD_EMERGENCY_INFO",
+      "ADD_EMERGENCY_CONTACT",
+      "RESOLVE_SUPPORT_QUERY",
+    ] as const) {
+      expect(planTransition({ type, toStatus: "DONE" }).kind).toBe("AUDIT_ONLY");
+      expect(planTransition({ type, toStatus: "WAITING" }).kind).toBe("AUDIT_ONLY");
+    }
+  });
+
+  it("practitioner approval fails closed until its decision write lands", () => {
     expect(planTransition({ type: "APPROVE_PRACTITIONER", toStatus: "DONE" }).kind).toBe(
       "UNSUPPORTED",
     );

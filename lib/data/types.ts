@@ -2,6 +2,7 @@ import type {
   AuditEvent,
   AuditTargetType,
   Device,
+  DirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
   IdentityRecord,
@@ -105,6 +106,17 @@ export type WorkTransitionInput = {
  * Both reads hit a queryable partition (NO profile scan, NO GSI). `transition`
  * rewrites BOTH projection items together (status is in both SKs).
  */
+/**
+ * Customer Directory — the producer-maintained listing projection (Ops-owned).
+ * `listCustomers` is a single-partition Query (never a scan); `upsertEntry` is
+ * a recompute-from-truth overwrite, so replays are harmless.
+ */
+export interface DirectoryRepository {
+  listCustomers(): Promise<DirectoryEntry[]>;
+  getEntry(profileId: string): Promise<DirectoryEntry | null>;
+  upsertEntry(entry: DirectoryEntry): Promise<DirectoryEntry>;
+}
+
 /** A signed change to the maintained Protected-Lives counters. */
 export type ProtectedLivesDelta = {
   /** +1 when a customer crosses INTO protected, −1 when out, 0 otherwise. */

@@ -1,21 +1,31 @@
 import type { Metadata } from "next";
-import { Stethoscope } from "lucide-react";
 import { PageHeader } from "@/components/app/PageHeader";
-import { SectionPlaceholder } from "@/components/app/SectionPlaceholder";
+import { WorkQueue } from "@/components/work/WorkQueue";
+import { getWorkItemRepository } from "@/lib/data";
+import { recordToWorkItem } from "@/lib/work/record";
 
 export const metadata: Metadata = { title: "Practitioners" };
 
-export default function PractitionersPage() {
+/**
+ * Practitioners — a projection over PERSISTED Work Items for the PRACTITIONER
+ * domain (approval requests from the Patient Platform's practitioner portal).
+ * NOTE: the approval DECISION write (practitioner status) is not wired yet —
+ * transitions fail closed with an explicit error until that persistence lands.
+ */
+export default async function PractitionersPage() {
+  const records = await getWorkItemRepository().listByDomain("PRACTITIONER");
+  const items = records.map(recordToWorkItem);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Practitioners"
-        description="Approve and manage practitioner accounts and their practices."
+        description="Practitioner approval work, projected from the Work Engine."
       />
-      <SectionPlaceholder
-        icon={Stethoscope}
-        title="Practitioners is coming soon"
-        description="The approval queue and management workspace for practitioners and practices."
+      <WorkQueue
+        items={items}
+        emptyTitle="No practitioner work"
+        emptyDescription="No practitioner approvals are waiting."
       />
     </div>
   );

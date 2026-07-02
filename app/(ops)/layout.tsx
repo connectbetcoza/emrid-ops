@@ -6,6 +6,8 @@ import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { requireOpsUser } from "@/lib/auth/server";
 import { roleLabel } from "@/lib/auth/roles";
 import { config } from "@/lib/config";
+import { getDirectoryRepository } from "@/lib/data";
+import { customerCommands } from "@/lib/search/commands";
 import { primaryRole } from "@/types";
 
 /**
@@ -26,10 +28,15 @@ export default async function OpsLayout({
   const user = await requireOpsUser();
   const label = roleLabel(primaryRole(user));
 
+  // Live customer search for the ⌘K palette — one directory Query, serialised
+  // into command items (never a scan, never a fixture).
+  const directory = await getDirectoryRepository().listCustomers();
+  const liveCustomerCommands = customerCommands(directory);
+
   return (
     <AuthProvider initialUser={user} mockMode={config.useMockAuth}>
       <ToastProvider>
-        <CommandPaletteProvider>
+        <CommandPaletteProvider customerCommands={liveCustomerCommands}>
           <a
             href="#main-content"
             className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[70] focus:rounded-md focus:border focus:border-border focus:bg-popover focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-popover-foreground focus:shadow-lg"

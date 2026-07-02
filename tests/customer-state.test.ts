@@ -32,7 +32,7 @@ describe("getCustomerState (repo-backed identity, card + emergency facets)", () 
     const c = await getCustomerState("CUS-2041");
     expect(c?.emergencyInfoComplete).toBe(true); // seeded blood type / allergies
     expect(c?.emergencyContactsCount).toBe(2); // seeded 2 contacts
-    expect(c?.location).toBe("Johannesburg"); // static detail stays fixture
+    expect(c?.fullName).toBe("Thandi Mokoena"); // from the Profile, not a fixture
     expect(c?.cardStatus).toBe("NONE");
   });
 

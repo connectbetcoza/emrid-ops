@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronsUpDown, LogOut, UserRound } from "lucide-react";
+import { ChevronsUpDown, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { signOut } from "@/lib/auth/actions";
 
@@ -84,18 +84,6 @@ export function UserMenu({
             <p className="truncate text-xs text-muted-foreground">{email}</p>
             <p className="mt-1 text-xs font-medium text-primary">{roleLabel}</p>
           </div>
-          <button
-            type="button"
-            role="menuitem"
-            disabled
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground"
-          >
-            <UserRound className="h-4 w-4" aria-hidden />
-            Profile
-            <span className="ml-auto text-[0.6875rem] uppercase tracking-wide">
-              Soon
-            </span>
-          </button>
           {mockMode ? (
             <button
               type="button"
