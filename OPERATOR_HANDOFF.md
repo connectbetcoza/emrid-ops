@@ -42,6 +42,7 @@ Grant the Ops Amplify compute role:
 | `NEXT_PUBLIC_COGNITO_CLIENT_ID` | set **before build** (inlined) |
 | `NEXT_PUBLIC_COGNITO_REGION` | set **before build** (inlined) |
 | `NEXT_PUBLIC_APP_URL` | the Ops origin |
+| `NEXT_PUBLIC_PATIENT_APP_URL` | the **Patient Platform** origin — base for the `/e/<token>` NFC URL in the card fulfilment pack (set **before build**; falls back to `NEXT_PUBLIC_APP_URL`, which is only correct in single-origin dev) |
 
 `next.config.mjs` already allow-lists `ops.emrid.co.za` + `*.amplifyapp.com` for Server Actions.
 

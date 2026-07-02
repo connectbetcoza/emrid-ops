@@ -101,6 +101,12 @@ export type Device = {
   profileId: string;
   status: DeviceStatus;
   token: string;
+  /**
+   * Customer activation code (mirrored from the Patient Platform's Device:
+   * present while PENDING; consumed/cleared by the customer's activation).
+   * Ops READS it for the fulfilment pack — never generates or clears it.
+   */
+  activationCode?: string;
   issuedAt: ISODateString;
   activatedAt?: ISODateString;
   updatedAt: ISODateString;

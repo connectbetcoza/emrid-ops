@@ -11,17 +11,29 @@ import { ReadinessCard } from "@/components/readiness/ReadinessCard";
 import { ReadinessBadge } from "@/components/readiness/ReadinessBadge";
 import { ProtectionStatusBadge } from "@/components/customers/ProtectionStatusBadge";
 import { ActiveWork } from "@/components/customers/ActiveWork";
+import { CardFulfilmentPack } from "@/components/customers/CardFulfilmentPack";
 import { InternalNotes } from "@/components/customers/InternalNotes";
 import { QuickActions } from "@/components/customers/QuickActions";
 import { Text } from "@/components/ui/Typography";
 import { getCustomerState } from "@/lib/customers/state";
 import { protectionFor } from "@/lib/protection/state";
 import {
+  buildFulfilmentPack,
+  fulfilmentDevice,
+  type FulfilmentPack,
+} from "@/lib/customers/fulfilment-pack";
+import {
   customerNotes,
   customerSummary,
   customerTimeline,
 } from "@/lib/customers/workspace";
-import { getWorkItemRepository } from "@/lib/data";
+import {
+  getAuditRepository,
+  getDeviceRepository,
+  getProfileRepository,
+  getWorkItemRepository,
+} from "@/lib/data";
+import { config } from "@/lib/config";
 import { recordToWorkItem } from "@/lib/work/record";
 import { activeWork } from "@/lib/work/projections";
 
@@ -53,6 +65,34 @@ export default async function CustomerWorkspacePage({
   const records = await getWorkItemRepository().listForCustomer(customer.id);
   const work = activeWork(records.map(recordToWorkItem), customer.id);
 
+  // Card Fulfilment Pack — a Workspace section, shown while the customer has
+  // active ISSUE_CARD work so the fulfilment officer never asks "what do I
+  // encode?". Assembled from repository state (device + profile EMRID + the
+  // device's tap audit trail); null pack ⇒ device not issued yet.
+  const hasCardWork = work.some((w) => w.type === "ISSUE_CARD");
+  let fulfilmentPack: FulfilmentPack | null = null;
+  let showFulfilmentPack = false;
+  if (hasCardWork) {
+    showFulfilmentPack = true;
+    const [profile, devices] = await Promise.all([
+      getProfileRepository().getProfile(customer.id),
+      getDeviceRepository().listForCustomer(customer.id),
+    ]);
+    const device = fulfilmentDevice(devices);
+    if (device) {
+      const deviceEvents = await getAuditRepository().listForTarget(
+        "DEVICE",
+        device.deviceId,
+      );
+      fulfilmentPack = buildFulfilmentPack({
+        emrid: profile?.emrid ?? customer.id,
+        device,
+        deviceEvents,
+        patientBaseUrl: config.patientAppUrl,
+      });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Link
@@ -80,6 +120,9 @@ export default async function CustomerWorkspacePage({
           <>
             <ReadinessCard result={readiness} />
             <SummaryPanel items={customerSummary(customer)} />
+            {showFulfilmentPack ? (
+              <CardFulfilmentPack pack={fulfilmentPack} />
+            ) : null}
           </>
         }
         actions={<QuickActions customer={customer} />}

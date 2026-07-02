@@ -77,6 +77,17 @@ export const config = {
   // NEXT_PUBLIC_* via STATIC access so Next inlines them at build (works on
   // Amplify even though it doesn't forward NEXT_PUBLIC_* to the SSR runtime).
   appUrl: normalize(process.env.NEXT_PUBLIC_APP_URL) ?? "http://localhost:3000",
+  /**
+   * PATIENT Platform origin — the base for the public `/e/<token>` NFC URL in
+   * the card fulfilment pack. The `/e` responder route lives on the Patient
+   * Platform, NOT on this Ops app, so encoding the Ops origin would print a
+   * dead URL on the card. Falls back to NEXT_PUBLIC_APP_URL for single-origin
+   * local dev; the operator MUST set NEXT_PUBLIC_PATIENT_APP_URL in production.
+   */
+  patientAppUrl:
+    normalize(process.env.NEXT_PUBLIC_PATIENT_APP_URL) ??
+    normalize(process.env.NEXT_PUBLIC_APP_URL) ??
+    "http://localhost:3000",
   appEnv,
   isProduction,
 

@@ -236,6 +236,7 @@ export function itemToDevice(item: Record<string, unknown>): Device {
     profileId: String(item.profileId),
     status: item.status as Device["status"],
     token: String(item.token),
+    activationCode: str(item.activationCode),
     issuedAt: String(item.issuedAt),
     activatedAt: str(item.activatedAt),
     updatedAt: String(item.updatedAt),

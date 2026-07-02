@@ -42,10 +42,16 @@ const WORK_TYPE_FLOW: Record<WorkType, { steps: Step[]; defer?: Step }> = {
     defer: { label: "Request resubmission", toStatus: "WAITING" },
   },
   ISSUE_CARD: {
+    // Dispatch ends at WAITING — awaiting the CUSTOMER's real activation — never
+    // DONE. Only DONE maps to CARD_ACTIVATION in the transition plan, so an Ops
+    // click can never activate the card or flip a customer to Protected
+    // (operational truth over theatre). Completion on real activation is a
+    // system transition (next patch: stream-driven when the device goes ACTIVE).
     steps: [
       { label: "Start encoding", toStatus: "IN_PROGRESS" },
       { label: "Mark encoded", toStatus: "IN_PROGRESS" },
-      { label: "Mark dispatched", toStatus: "DONE" },
+      { label: "Mark tap verified", toStatus: "IN_PROGRESS" },
+      { label: "Mark dispatched", toStatus: "WAITING" },
     ],
   },
   COMPLETE_PROFILE: { steps: [{ label: "Mark complete", toStatus: "DONE" }] },

@@ -76,7 +76,7 @@ export const WORK_TYPE_META: Record<WorkType, WorkTypeMeta> = {
     domain: "FULFILMENT",
     icon: CreditCard,
     defaultPriority: "HIGH",
-    nextAction: "Encode and dispatch card",
+    nextAction: "Encode, tap-test and dispatch card",
   },
   COMPLETE_PROFILE: {
     label: "Complete customer profile",

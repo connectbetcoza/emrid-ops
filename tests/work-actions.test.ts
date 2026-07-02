@@ -45,7 +45,7 @@ describe("workActions (generic, type-agnostic)", () => {
     expect(primary?.toStatus).toBe("DONE");
   });
 
-  it("Card Fulfilment (multi-step) progresses encode → dispatch by step", () => {
+  it("Card Fulfilment progresses encode → tap-verify → dispatch, ending WAITING (never DONE)", () => {
     const labelAt = (step: number, status: WorkStatus) =>
       workActions({ type: "ISSUE_CARD", status, step }).find(
         (a) => a.kind === "primary",
@@ -60,10 +60,21 @@ describe("workActions (generic, type-agnostic)", () => {
     expect(s1?.toStatus).toBe("IN_PROGRESS");
 
     const s2 = labelAt(2, "IN_PROGRESS");
-    expect(s2?.label).toBe("Mark dispatched");
-    expect(s2?.toStatus).toBe("DONE");
+    expect(s2?.label).toBe("Mark tap verified");
+    expect(s2?.toStatus).toBe("IN_PROGRESS");
+
+    // Dispatch parks the item WAITING on the customer's REAL activation. No Ops
+    // step may reach DONE — DONE is what triggers CARD_ACTIVATION, and only a
+    // real activation may do that (operational truth over theatre).
+    const s3 = labelAt(3, "IN_PROGRESS");
+    expect(s3?.label).toBe("Mark dispatched");
+    expect(s3?.toStatus).toBe("WAITING");
+
+    for (const step of [0, 1, 2, 3]) {
+      expect(labelAt(step, "IN_PROGRESS")?.toStatus).not.toBe("DONE");
+    }
 
     // past the last step, no further forward action
-    expect(labelAt(3, "IN_PROGRESS")).toBeUndefined();
+    expect(labelAt(4, "IN_PROGRESS")).toBeUndefined();
   });
 });

@@ -93,12 +93,35 @@ function seedDevices(): Device[] {
         profileId: c.id,
         status,
         token: `tok-${c.id}`,
+        // Patient-issued activation code: present while PENDING, consumed on
+        // activation (mirrors the Patient Platform's device lifecycle).
+        activationCode: status === "PENDING" ? `ACT-${c.id.slice(-4)}` : undefined,
         issuedAt: c.joinedAt,
         activatedAt: status === "ACTIVE" ? c.joinedAt : undefined,
         updatedAt: c.joinedAt,
       },
     ];
   });
+}
+
+/**
+ * A seeded fulfilment tap-test: the Patient Platform's public `/e/<token>` route
+ * records DEVICE_TAP_TESTED when a PENDING card is tapped, so the Ops fulfilment
+ * pack can show "last tap". Seeded for one PENDING-card customer to keep the
+ * surface demonstrable in mock.
+ */
+function seedTapTestAudit(): AuditEvent[] {
+  return [
+    {
+      eventId: "evt-tap-CUS-2042",
+      eventType: "DEVICE_TAP_TESTED",
+      actorType: "PUBLIC_RESPONDER",
+      targetType: "DEVICE",
+      targetId: "dev-CUS-2042",
+      timestamp: "2026-06-29T14:05:00.000Z",
+      metadata: { profileId: "CUS-2042" },
+    },
+  ];
 }
 
 /**
@@ -154,7 +177,7 @@ function freshStore(): MockStore {
     profiles: new Map(),
     identities: new Map(),
     documents: new Map(),
-    audit: [],
+    audit: [...seedTapTestAudit()],
     workItems: new Map(),
     devices: new Map(),
     emergencyProfiles: new Map(),

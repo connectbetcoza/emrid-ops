@@ -11,9 +11,11 @@ import {
   getWorkItemRepository,
 } from "@/lib/data";
 import { executeTransition } from "@/lib/work/transition-service";
+import { workActions } from "@/lib/work/actions";
 import { protectionStatus, readinessForCustomer } from "@/lib/customers/readiness";
 import { getCustomerState } from "@/lib/customers/state";
 import type { DynamoDeps } from "@/lib/data/aws/client";
+import type { WorkItemRecord } from "@/lib/data/work-record";
 
 beforeEach(() => resetStore());
 
@@ -109,7 +111,10 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
       protectedBefore,
     );
 
-    // Step 9 — fulfil card (complete the ISSUE_CARD work) → crosses into PROTECTED.
+    // Steps 9–10 — the ISSUE_CARD work reaches DONE. NOTE: the Ops UI can no
+    // longer produce DONE (dispatch parks the item WAITING); DONE here simulates
+    // the CUSTOMER'S REAL ACTIVATION completing the work — the system transition
+    // that is the only legitimate trigger of CARD_ACTIVATION.
     const cardWork = (await deps.workRepo.listByDomain("FULFILMENT")).find(
       (w) => w.customerId === id,
     )!;
@@ -131,6 +136,67 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
     const events = await deps.auditRepo.listForProfile(id);
     expect(events.map((e) => e.eventType).sort()).toEqual(
       ["CARD_ACTIVATED", "IDENTITY_VERIFIED"].sort(),
+    );
+  });
+});
+
+// ── Operational truth: Ops dispatch must never activate the card ──────────────
+
+describe("Fulfilment dispatch does NOT activate the card or protect the customer", () => {
+  it("walking every Ops step ends WAITING with the device still PENDING", async () => {
+    const deps = {
+      workRepo: getWorkItemRepository(),
+      profileRepo: getProfileRepository(),
+      deviceRepo: getDeviceRepository(),
+      auditRepo: getAuditRepository(),
+      emergencyRepo: getEmergencyProfileRepository(),
+      aggregateRepo: getAggregateRepository(),
+    };
+    // Sipho: identity VERIFIED, emergency ok, card PENDING (device seeded).
+    const id = "CUS-2042";
+    const protectedBefore = (await deps.aggregateRepo.getProtectedLives())
+      .protectedCount;
+
+    let record: WorkItemRecord = (
+      await deps.workRepo.listByDomain("FULFILMENT")
+    ).find((w) => w.customerId === id)!;
+
+    // Take the primary forward action until none remains — the full Ops flow.
+    for (let guard = 0; guard < 10; guard++) {
+      const primary = workActions({
+        type: record.workType,
+        status: record.status,
+        step: record.step,
+      }).find((a) => a.kind === "primary" && a.advances);
+      if (!primary) break;
+
+      // No Ops click may ever complete activation.
+      expect(primary.toStatus).not.toBe("DONE");
+
+      const res = await executeTransition(deps, {
+        current: record,
+        toStatus: primary.toStatus,
+        step: record.step + 1,
+        actorId: "ops-1",
+      });
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error(res.error);
+      record = res.record;
+    }
+
+    // Parked awaiting the CUSTOMER's real activation.
+    expect(record.status).toBe("WAITING");
+
+    // The device was never activated by Ops.
+    const devices = await deps.deviceRepo.listForCustomer(id);
+    expect(devices[0]?.status).toBe("PENDING");
+
+    // The customer is NOT protected, and the north-star figure did not move.
+    const customer = (await getCustomerState(id))!;
+    expect(customer.cardStatus).toBe("PENDING");
+    expect(protectionStatus(customer)).not.toBe("PROTECTED");
+    expect((await deps.aggregateRepo.getProtectedLives()).protectedCount).toBe(
+      protectedBefore,
     );
   });
 });
