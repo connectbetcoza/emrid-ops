@@ -116,7 +116,12 @@ The application logic that turns a Patient-Platform shared-table write into the 
 4. **IAM (Lambda execution role):** `dynamodb:GetRecords`/`GetShardIterator`/`DescribeStream`/`ListStreams` on the table stream ARN; plus the Ops table permissions the producer needs — `Query` (the customer-index idempotency read) and `TransactWriteItems` (the dual-write create). **No `Scan`.**
 5. Failure handling: configure a DLQ / bisect-on-error on the event-source mapping; the handler skips malformed records rather than failing the batch.
 
-**Relationship to the Protected-Lives aggregate (§9) — two distinct mechanisms:**
-- **Work Items are created by this producer** (on Patient-Platform submissions).
-- **The Protected-Lives aggregate is updated by `executeTransition`** when an Ops action crosses the PROTECTED boundary — *not* by this producer.
-- **Any reconciliation job** (to correct aggregate drift from Patient-Platform-only crossings, per §9) is **operator-owned**; the same Stream → Lambda is the natural host for it in a later iteration, but it is out of scope here.
+**State-sync (activation completion) — added after the First Protected Life:**
+- The producer now ALSO observes the CUSTOMER's real card activation (a Device item reaching `ACTIVE` from a non-ACTIVE state) and **completes the customer's `ISSUE_CARD` Work Item** (→ DONE, both projections), **applies the Protected-boundary crossing to the aggregate exactly once**, and appends a SYSTEM `OPS_WORK_TRANSITION` audit (metadata `trigger: CARD_ACTIVATED`). Ops dispatch still never activates — activation remains patient-owned.
+- **Replay-safe:** the work item's terminal status is the dedupe marker — a redelivered activation event finds it DONE and no-ops (no duplicate completion, no re-increment).
+- **⚠️ Lambda redeploy + IAM additions required:** rebuild/redeploy the Lambda bundle (the handler now injects the device/emergency/aggregate/audit repositories), and add to the producer Lambda role, on the table ARN: **`dynamodb:UpdateItem`** (the aggregate's atomic ADD) and **`dynamodb:DeleteItem`** (the work-item transition's delete+put when status changes). `GetItem`/`Query`/`PutItem` were already granted.
+
+**Relationship to the Protected-Lives aggregate (§9):**
+- **Work Items are created by this producer** (on Patient-Platform submissions) and **completed by it on real activation** (above).
+- **`executeTransition`** adjusts the aggregate only when an *Ops* action crosses the PROTECTED boundary (e.g. identity approval for a customer whose card is already active); the **producer** owns the activation crossing. The two triggers are disjoint states, so a crossing is never double-counted.
+- **Any periodic reconciliation job** (drift from crossings neither observes, e.g. emergency-info added last) remains **operator-owned**.

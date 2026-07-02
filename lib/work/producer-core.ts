@@ -82,6 +82,35 @@ export function workIntentForChange(change: StreamChange): WorkIntent | null {
   return null;
 }
 
+/** A device activation the producer must reconcile operational state to. */
+export type CardCompletion = {
+  customerId: string;
+  /** The device that was activated (to exclude it from "already active" checks). */
+  deviceId: string;
+};
+
+/**
+ * Detect the CUSTOMER's real card activation: a Device item reaching ACTIVE
+ * from a non-ACTIVE state (the Patient Platform's activation write). This is
+ * the only legitimate trigger for completing ISSUE_CARD work and crossing the
+ * Protected boundary — Ops dispatch never activates (operational truth).
+ */
+export function cardCompletionForChange(
+  change: StreamChange,
+): CardCompletion | null {
+  if (change.keys.SK !== DEVICE_SK) return null;
+  const img = change.newImage;
+  if (!img) return null;
+  const status = str(img.status);
+  const previous = str(change.oldImage?.status);
+  const customerId = str(img.profileId);
+  const deviceId = str(img.deviceId);
+  if (status === "ACTIVE" && previous !== "ACTIVE" && customerId && deviceId) {
+    return { customerId, deviceId };
+  }
+  return null;
+}
+
 /**
  * Build the Work Item record for an intent. OPEN, default priority (the rules'
  * base — unprotected-escalation needs full customer state and stays a generator

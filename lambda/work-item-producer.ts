@@ -24,7 +24,14 @@ import {
   produceFromStreamRecords,
   type ProduceResult,
 } from "@/lib/work/producer";
-import { getProfileRepository, getWorkItemRepository } from "@/lib/data";
+import {
+  getAggregateRepository,
+  getAuditRepository,
+  getDeviceRepository,
+  getEmergencyProfileRepository,
+  getProfileRepository,
+  getWorkItemRepository,
+} from "@/lib/data";
 
 /** Minimal shape of a DynamoDB Stream invocation (avoids an aws-lambda dep). */
 type DynamoDBStreamEvent = { Records?: unknown[] };
@@ -37,17 +44,23 @@ export async function handler(event: DynamoDBStreamEvent): Promise<void> {
     {
       workRepo: getWorkItemRepository(),
       profileRepo: getProfileRepository(),
+      deviceRepo: getDeviceRepository(),
+      emergencyRepo: getEmergencyProfileRepository(),
+      aggregateRepo: getAggregateRepository(),
+      auditRepo: getAuditRepository(),
     },
     records,
     new Date().toISOString(),
   );
 
   const created = results.filter((r) => r.created).length;
+  const completed = results.filter((r) => r.completed).length;
   // Secret-free operational log (counts only — never item contents / ids of PII).
   console.info("[work-item-producer]", {
     received: records.length,
     processed: results.length,
     created,
-    skipped: results.length - created,
+    completed,
+    skipped: results.length - created - completed,
   });
 }
