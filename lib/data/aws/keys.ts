@@ -2,8 +2,12 @@ import type {
   AuditEvent,
   Device,
   DirectoryEntry,
+  PractitionerDirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
+  Practice,
+  Practitioner,
+  PractitionerAccess,
   Profile,
   ProtectedLivesAggregate,
 } from "@/lib/data/entities";
@@ -379,5 +383,90 @@ export function itemToDirectoryEntry(
     cardStatus: item.cardStatus as DirectoryEntry["cardStatus"],
     joinedAt: String(item.joinedAt),
     updatedAt: String(item.updatedAt),
+  };
+}
+
+// ── Practitioners / practices (mirror of the Patient Platform's keys) ─────────
+
+export const PRACTICE_SK = "PRACTICE";
+export const PRACTITIONER_SK = "PRACTITIONER";
+
+export const practicePk = (practiceId: string): string =>
+  `PRACTICE#${practiceId}`;
+export const practitionerPk = (practitionerId: string): string =>
+  `PRACTITIONER#${practitionerId}`;
+
+export function itemToPractice(item: Record<string, unknown>): Practice {
+  return {
+    practiceId: String(item.practiceId),
+    name: String(item.name),
+    email: String(item.email),
+    phone: str(item.phone),
+    address: str(item.address),
+    status: item.status as Practice["status"],
+    createdAt: String(item.createdAt),
+    updatedAt: String(item.updatedAt),
+  };
+}
+
+export function itemToPractitioner(item: Record<string, unknown>): Practitioner {
+  return {
+    practitionerId: String(item.practitionerId),
+    userId: String(item.userId),
+    practiceId: String(item.practiceId),
+    fullName: String(item.fullName),
+    email: String(item.email),
+    registrationNumber: str(item.registrationNumber),
+    status: item.status as Practitioner["status"],
+    statusNotes: str(item.statusNotes),
+    createdAt: String(item.createdAt),
+    updatedAt: String(item.updatedAt),
+  };
+}
+
+export const DIRECTORY_PRACTITIONER_PREFIX_SK = "PRACTITIONER#";
+export const directoryPractitionerSk = (practitionerId: string): string =>
+  `${DIRECTORY_PRACTITIONER_PREFIX_SK}${practitionerId}`;
+
+/** DynamoDB item for a Practitioner Directory entry. */
+export function practitionerDirectoryItem(
+  entry: PractitionerDirectoryEntry,
+): Record<string, unknown> {
+  return {
+    PK: DIRECTORY_PK,
+    SK: directoryPractitionerSk(entry.practitionerId),
+    type: "PRACTITIONER_DIRECTORY",
+    ...entry,
+  };
+}
+
+/** Reconstruct a PractitionerDirectoryEntry from a stored item. */
+export function itemToPractitionerDirectoryEntry(
+  item: Record<string, unknown>,
+): PractitionerDirectoryEntry {
+  return {
+    practitionerId: String(item.practitionerId),
+    fullName: String(item.fullName),
+    email: String(item.email),
+    practiceId: String(item.practiceId),
+    practiceName: str(item.practiceName),
+    status: item.status as PractitionerDirectoryEntry["status"],
+    registeredAt: String(item.registeredAt),
+    updatedAt: String(item.updatedAt),
+  };
+}
+
+export const PATIENT_BY_PRACTITIONER_PREFIX = "PATIENT#"; // SK prefix in PRACTITIONER# partition
+
+export function itemToPractitionerAccess(
+  item: Record<string, unknown>,
+): PractitionerAccess {
+  return {
+    accessId: String(item.accessId),
+    practitionerId: String(item.practitionerId),
+    profileId: String(item.profileId),
+    grantedAt: String(item.grantedAt),
+    revokedAt: str(item.revokedAt),
+    status: item.status as PractitionerAccess["status"],
   };
 }

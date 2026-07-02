@@ -14,6 +14,7 @@ import { MockEmergencyProfileRepository } from "@/lib/data/mock/emergency-profil
 import { MockAggregateRepository } from "@/lib/data/mock/aggregate-repository";
 import { MockAuditRepository } from "@/lib/data/mock/audit-repository";
 import { MockDirectoryRepository } from "@/lib/data/mock/directory-repository";
+import { MockPractitionerRepository } from "@/lib/data/mock/practitioner-repository";
 import { getCustomerState } from "@/lib/customers/state";
 import { protectionStatus, readinessForCustomer } from "@/lib/customers/readiness";
 import { mockStore, resetStore } from "@/lib/data/mock/store";
@@ -30,6 +31,7 @@ function producerDeps() {
     aggregateRepo: new MockAggregateRepository(),
     auditRepo: new MockAuditRepository(),
     directoryRepo: new MockDirectoryRepository(),
+    practitionerRepo: new MockPractitionerRepository(),
   };
 }
 

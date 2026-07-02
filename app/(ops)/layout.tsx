@@ -7,7 +7,7 @@ import { requireOpsUser } from "@/lib/auth/server";
 import { roleLabel } from "@/lib/auth/roles";
 import { config } from "@/lib/config";
 import { getDirectoryRepository } from "@/lib/data";
-import { customerCommands } from "@/lib/search/commands";
+import { customerCommands, practitionerCommands } from "@/lib/search/commands";
 import { primaryRole } from "@/types";
 
 /**
@@ -28,10 +28,16 @@ export default async function OpsLayout({
   const user = await requireOpsUser();
   const label = roleLabel(primaryRole(user));
 
-  // Live customer search for the ⌘K palette — one directory Query, serialised
-  // into command items (never a scan, never a fixture).
-  const directory = await getDirectoryRepository().listCustomers();
-  const liveCustomerCommands = customerCommands(directory);
+  // Live customer + practitioner search for the ⌘K palette — two directory
+  // Queries, serialised into command items (never a scan, never a fixture).
+  const [directory, practitionerDirectory] = await Promise.all([
+    getDirectoryRepository().listCustomers(),
+    getDirectoryRepository().listPractitioners(),
+  ]);
+  const liveCustomerCommands = [
+    ...customerCommands(directory),
+    ...practitionerCommands(practitionerDirectory),
+  ];
 
   return (
     <AuthProvider initialUser={user} mockMode={config.useMockAuth}>

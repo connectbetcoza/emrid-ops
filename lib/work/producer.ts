@@ -4,6 +4,7 @@ import type {
   DeviceRepository,
   DirectoryRepository,
   EmergencyProfileRepository,
+  PractitionerRepository,
   ProfileRepository,
   WorkItemRepository,
 } from "@/lib/data/types";
@@ -11,6 +12,7 @@ import {
   buildProducedWorkItem,
   cardCompletionForChange,
   directoryRefreshTarget,
+  practitionerRefreshTarget,
   producedWorkItemId,
   workIntentForChange,
   type CardCompletion,
@@ -54,6 +56,7 @@ export type ProducerDeps = {
   aggregateRepo: AggregateRepository;
   auditRepo: AuditRepository;
   directoryRepo: DirectoryRepository;
+  practitionerRepo: PractitionerRepository;
 };
 
 export type ProduceResult = {
@@ -171,6 +174,31 @@ export async function refreshDirectoryEntry(
   return true;
 }
 
+/**
+ * Recompute one practitioner's Directory entry from source-of-truth reads and
+ * upsert it (same recompute-from-truth idiom as customer entries).
+ */
+export async function refreshPractitionerDirectoryEntry(
+  deps: ProducerDeps,
+  practitionerId: string,
+  now: string,
+): Promise<boolean> {
+  const practitioner = await deps.practitionerRepo.getPractitioner(practitionerId);
+  if (!practitioner) return false;
+  const practice = await deps.practitionerRepo.getPractice(practitioner.practiceId);
+  await deps.directoryRepo.upsertPractitionerEntry({
+    practitionerId: practitioner.practitionerId,
+    fullName: practitioner.fullName,
+    email: practitioner.email,
+    practiceId: practitioner.practiceId,
+    practiceName: practice?.name,
+    status: practitioner.status,
+    registeredAt: practitioner.createdAt,
+    updatedAt: now,
+  });
+  return true;
+}
+
 /** The work-item action (creation/completion) a change implies, if any. */
 async function applyWorkAction(
   deps: ProducerDeps,
@@ -194,12 +222,16 @@ async function applyWorkAction(
     return { created: false, workItemId, reason: "exists" };
   }
 
-  // Resolve the display name from the profile (a single point lookup, no scan);
-  // fall back to the id if the profile isn't readable yet.
-  const profile = await deps.profileRepo.getProfile(intent.customerId);
-  const subjectName = profile
-    ? `${profile.firstName} ${profile.lastName}`.trim()
-    : intent.customerId;
+  // Resolve the display name: practitioner intents carry it on the stream
+  // image; customer intents resolve via the profile (a single point lookup,
+  // no scan); fall back to the id if neither is available.
+  let subjectName = intent.subjectName;
+  if (!subjectName) {
+    const profile = await deps.profileRepo.getProfile(intent.customerId);
+    subjectName = profile
+      ? `${profile.firstName} ${profile.lastName}`.trim()
+      : intent.customerId;
+  }
 
   const record = buildProducedWorkItem(intent, { subjectName, now });
   await deps.workRepo.create(record); // idempotent at the repo level too
@@ -220,6 +252,10 @@ export async function produceFromChange(
   const refreshTarget = directoryRefreshTarget(change);
   if (refreshTarget) {
     await refreshDirectoryEntry(deps, refreshTarget, now);
+  }
+  const practitionerTarget = practitionerRefreshTarget(change);
+  if (practitionerTarget) {
+    await refreshPractitionerDirectoryEntry(deps, practitionerTarget, now);
   }
 
   return result;

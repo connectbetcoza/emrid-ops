@@ -7,6 +7,7 @@ import type {
   DeviceRepository,
   DocumentRepository,
   EmergencyProfileRepository,
+  PractitionerRepository,
   ProfileRepository,
   WorkItemRepository,
 } from "@/lib/data/types";
@@ -18,6 +19,7 @@ import { MockDeviceRepository } from "@/lib/data/mock/device-repository";
 import { MockEmergencyProfileRepository } from "@/lib/data/mock/emergency-profile-repository";
 import { MockAggregateRepository } from "@/lib/data/mock/aggregate-repository";
 import { MockDirectoryRepository } from "@/lib/data/mock/directory-repository";
+import { MockPractitionerRepository } from "@/lib/data/mock/practitioner-repository";
 import { DynamoProfileRepository } from "@/lib/data/aws/profile-repository";
 import { DynamoDocumentRepository } from "@/lib/data/aws/document-repository";
 import { DynamoAuditRepository } from "@/lib/data/aws/audit-repository";
@@ -26,6 +28,7 @@ import { DynamoDeviceRepository } from "@/lib/data/aws/device-repository";
 import { DynamoEmergencyProfileRepository } from "@/lib/data/aws/emergency-profile-repository";
 import { DynamoAggregateRepository } from "@/lib/data/aws/aggregate-repository";
 import { DynamoDirectoryRepository } from "@/lib/data/aws/directory-repository";
+import { DynamoPractitionerRepository } from "@/lib/data/aws/practitioner-repository";
 
 /**
  * Repository factory — the spine. `pickMigrated` returns the DynamoDB impl when
@@ -44,6 +47,7 @@ const mockDevice = new MockDeviceRepository();
 const mockEmergency = new MockEmergencyProfileRepository();
 const mockAggregate = new MockAggregateRepository();
 const mockDirectory = new MockDirectoryRepository();
+const mockPractitioner = new MockPractitionerRepository();
 
 const awsProfile = new DynamoProfileRepository();
 const awsDocument = new DynamoDocumentRepository();
@@ -53,6 +57,7 @@ const awsDevice = new DynamoDeviceRepository();
 const awsEmergency = new DynamoEmergencyProfileRepository();
 const awsAggregate = new DynamoAggregateRepository();
 const awsDirectory = new DynamoDirectoryRepository();
+const awsPractitioner = new DynamoPractitionerRepository();
 
 export function getProfileRepository(): ProfileRepository {
   return pickMigrated(mockProfile, awsProfile);
@@ -84,4 +89,8 @@ export function getAggregateRepository(): AggregateRepository {
 
 export function getDirectoryRepository(): DirectoryRepository {
   return pickMigrated<DirectoryRepository>(mockDirectory, awsDirectory);
+}
+
+export function getPractitionerRepository(): PractitionerRepository {
+  return pickMigrated<PractitionerRepository>(mockPractitioner, awsPractitioner);
 }

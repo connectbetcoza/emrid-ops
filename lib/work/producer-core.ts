@@ -2,7 +2,7 @@ import type { WorkItemRecord } from "@/lib/data/work-record";
 import type { WorkType } from "@/lib/work/work-type";
 import { workTypeMeta } from "@/lib/work/work-type";
 import { dueDateFor } from "@/lib/work/rules";
-import { DEVICE_SK, PROFILE_SK } from "@/lib/data/aws/keys";
+import { DEVICE_SK, PRACTITIONER_SK, PROFILE_SK } from "@/lib/data/aws/keys";
 
 /**
  * Work-Item producer — PURE core. Turns a normalized shared-table change into
@@ -31,8 +31,14 @@ export type StreamChange = {
 
 /** What the producer decides to create. */
 export type WorkIntent = {
-  workType: Extract<WorkType, "VERIFY_IDENTITY" | "ISSUE_CARD">;
+  workType: Extract<
+    WorkType,
+    "VERIFY_IDENTITY" | "ISSUE_CARD" | "APPROVE_PRACTITIONER"
+  >;
+  /** The SUBJECT id the work is indexed under (customer or practitioner). */
   customerId: string;
+  /** Subject display name when the stream image carries it (practitioners). */
+  subjectName?: string;
 };
 
 const str = (v: unknown): string | undefined =>
@@ -42,6 +48,7 @@ const str = (v: unknown): string | undefined =>
 const ID_SUFFIX: Record<WorkIntent["workType"], string> = {
   VERIFY_IDENTITY: "identity",
   ISSUE_CARD: "card",
+  APPROVE_PRACTITIONER: "practitioner",
 };
 
 /** Deterministic Work Item id for an intent (the idempotency key). */
@@ -75,6 +82,25 @@ export function workIntentForChange(change: StreamChange): WorkIntent | null {
     const customerId = str(img.profileId);
     if (status === "PENDING" && previous !== "PENDING" && customerId) {
       return { workType: "ISSUE_CARD", customerId };
+    }
+    return null;
+  }
+
+  if (change.keys.SK === PRACTITIONER_SK) {
+    // An INTERNALLY-CREATED practitioner record reaching PENDING owes a
+    // review (V1: no public self-registration — these records are admin
+    // writes). The subject is the PRACTITIONER (indexed under their id); the
+    // display name comes straight from the image (practitioners have no
+    // Profile item to resolve against).
+    const status = str(img.status);
+    const previous = str(change.oldImage?.status);
+    const practitionerId = str(img.practitionerId);
+    if (status === "PENDING" && previous !== "PENDING" && practitionerId) {
+      return {
+        workType: "APPROVE_PRACTITIONER",
+        customerId: practitionerId,
+        subjectName: str(img.fullName),
+      };
     }
     return null;
   }
@@ -141,6 +167,7 @@ export function directoryRefreshTarget(change: StreamChange): string | null {
     return null;
   }
   if (SK === DEVICE_SK) return str(img.profileId) ?? null;
+  // Practitioner items refresh the PRACTITIONER directory (handled separately).
   if (PK.startsWith("WORK#")) return str(img.customerId) ?? null;
   if (PK.startsWith("AUDIT#")) {
     if (str(img.targetType) === "PROFILE") return str(img.targetId) ?? null;
@@ -152,6 +179,14 @@ export function directoryRefreshTarget(change: StreamChange): string | null {
     return typeof fromMeta === "string" ? fromMeta : null;
   }
   return null;
+}
+
+/** Which practitioner's directory entry a change makes stale (null when none). */
+export function practitionerRefreshTarget(change: StreamChange): string | null {
+  if (change.keys.PK === "DIRECTORY") return null; // self-loop guard
+  if (change.keys.SK !== PRACTITIONER_SK) return null;
+  const img = change.newImage ?? change.oldImage;
+  return (img && str(img.practitionerId)) || null;
 }
 
 /**

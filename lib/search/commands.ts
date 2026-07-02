@@ -1,7 +1,10 @@
 import type { CommandItem } from "@/lib/search/core";
 import { OPS_NAV_ITEMS } from "@/lib/navigation";
 import { PROTECTION_STATUS_META } from "@/lib/customers/readiness";
-import type { DirectoryEntry } from "@/lib/data/entities";
+import type {
+  DirectoryEntry,
+  PractitionerDirectoryEntry,
+} from "@/lib/data/entities";
 
 /**
  * Command sources for the universal search palette — REAL DATA ONLY.
@@ -28,5 +31,19 @@ export function customerCommands(entries: DirectoryEntry[]): CommandItem[] {
     group: "Customers",
     href: `/customers/${entry.profileId}`,
     keywords: ["customer", entry.emrid, entry.profileId],
+  }));
+}
+
+/** Practitioner results deep-link into the Practitioner Workspace. */
+export function practitionerCommands(
+  entries: PractitionerDirectoryEntry[],
+): CommandItem[] {
+  return entries.map((entry) => ({
+    id: `prac:${entry.practitionerId}`,
+    title: entry.fullName,
+    subtitle: `Practitioner · ${entry.practiceName ?? entry.practiceId} · ${entry.status}`,
+    group: "Practitioners",
+    href: `/practitioners/${entry.practitionerId}`,
+    keywords: ["practitioner", "doctor", entry.practiceName ?? "", entry.practitionerId],
   }));
 }

@@ -7,6 +7,7 @@ import {
   getAuditRepository,
   getDeviceRepository,
   getEmergencyProfileRepository,
+  getPractitionerRepository,
   getProfileRepository,
   getWorkItemRepository,
 } from "@/lib/data";
@@ -97,6 +98,7 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
       auditRepo: getAuditRepository(),
       emergencyRepo: getEmergencyProfileRepository(),
       aggregateRepo: getAggregateRepository(),
+      practitionerRepo: getPractitionerRepository(),
     };
     const id = "CUS-2041"; // Thandi: identity PENDING, emergency ok, contacts ok, no card
     const protectedBefore = (await deps.aggregateRepo.getProtectedLives())
@@ -151,6 +153,7 @@ describe("Fulfilment dispatch does NOT activate the card or protect the customer
       auditRepo: getAuditRepository(),
       emergencyRepo: getEmergencyProfileRepository(),
       aggregateRepo: getAggregateRepository(),
+      practitionerRepo: getPractitionerRepository(),
     };
     // Sipho: identity VERIFIED, emergency ok, card PENDING (device seeded).
     const id = "CUS-2042";

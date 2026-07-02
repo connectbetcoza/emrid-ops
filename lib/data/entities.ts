@@ -201,16 +201,41 @@ export type AuditEvent = {
 export type NewAuditEvent = Omit<AuditEvent, "eventId" | "timestamp">;
 
 /**
- * Protected-Lives aggregate (`AGGREGATE#PROTECTED_LIVES / CURRENT`).
- *
- * ⚠️ Ops-OWNED — NOT mirrored from the Patient Platform. This is a new item type
- * Operations maintains on the shared table to avoid scanning profiles to count
- * the north-star figure. The Patient Platform neither reads nor writes it, so it
- * carries no cross-product drift risk (unlike the mirrored entities above). It
- * is maintained by `executeTransition` on Protected-boundary crossings and read
- * by the Protected-Lives engine. Counts reflect Ops-observed crossings from a
- * seeded baseline — see OPERATOR_HANDOFF (backfill + reconciliation).
+ * Practitioner pilot portal entities — MIRROR of the Patient Platform's
+ * `types/practitioner.ts` (byte-for-byte, incl. the jointly-added REJECTED
+ * status + `statusNotes`, which Ops WRITES and the practitioner portal reads
+ * back — the same seam as the identity decision).
  */
+export type PracticeStatus = "ACTIVE" | "INACTIVE";
+
+export type Practice = {
+  practiceId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  status: PracticeStatus;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+};
+
+export type PractitionerStatus = "PENDING" | "APPROVED" | "SUSPENDED" | "REJECTED";
+
+export type Practitioner = {
+  /** V1: practitionerId === userId === Cognito sub. */
+  practitionerId: string;
+  userId: string;
+  practiceId: string;
+  fullName: string;
+  email: string;
+  registrationNumber?: string;
+  status: PractitionerStatus;
+  /** Ops decision notes (e.g. rejection reason) — written by EMRID Operations. */
+  statusNotes?: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+};
+
 /**
  * Customer Directory entry (`DIRECTORY / CUSTOMER#<profileId>`).
  *
@@ -244,6 +269,45 @@ export type DirectoryEntry = {
   emergencyContactsCount: number;
   cardStatus: "NONE" | "PENDING" | "ACTIVE" | "SUSPENDED";
   joinedAt: ISODateString;
+  updatedAt: ISODateString;
+};
+
+/**
+ * Protected-Lives aggregate (`AGGREGATE#PROTECTED_LIVES / CURRENT`).
+ *
+ * ⚠️ Ops-OWNED — NOT mirrored from the Patient Platform. This is a new item type
+ * Operations maintains on the shared table to avoid scanning profiles to count
+ * the north-star figure. The Patient Platform neither reads nor writes it, so it
+ * carries no cross-product drift risk (unlike the mirrored entities above). It
+ * is maintained by `executeTransition` on Protected-boundary crossings and read
+ * by the Protected-Lives engine. Counts reflect Ops-observed crossings from a
+ * seeded baseline — see OPERATOR_HANDOFF (backfill + reconciliation).
+ */
+export type PractitionerAccessStatus = "ACTIVE" | "REVOKED";
+
+/** A grant linking one practitioner to one patient profile (mirror). */
+export type PractitionerAccess = {
+  accessId: string;
+  practitionerId: string;
+  profileId: string;
+  grantedAt: ISODateString;
+  revokedAt?: ISODateString;
+  status: PractitionerAccessStatus;
+};
+
+/**
+ * Practitioner Directory entry (`DIRECTORY / PRACTITIONER#<practitionerId>`) —
+ * Ops-owned listing/search projection for practitioners (same idiom as the
+ * customer entries; producer-maintained, recompute-from-truth, no scan).
+ */
+export type PractitionerDirectoryEntry = {
+  practitionerId: string;
+  fullName: string;
+  email: string;
+  practiceId: string;
+  practiceName?: string;
+  status: PractitionerStatus;
+  registeredAt: ISODateString;
   updatedAt: ISODateString;
 };
 

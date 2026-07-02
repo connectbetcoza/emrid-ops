@@ -39,9 +39,20 @@ describe("planTransition (work transition → shared write)", () => {
     }
   });
 
-  it("practitioner approval fails closed until its decision write lands", () => {
-    expect(planTransition({ type: "APPROVE_PRACTITIONER", toStatus: "DONE" }).kind).toBe(
-      "UNSUPPORTED",
-    );
+  it("practitioner approval records the decision (defaulting to APPROVED)", () => {
+    expect(planTransition({ type: "APPROVE_PRACTITIONER", toStatus: "DONE" })).toEqual({
+      kind: "PRACTITIONER_DECISION",
+      decision: "APPROVED",
+    });
+    expect(
+      planTransition({
+        type: "APPROVE_PRACTITIONER",
+        toStatus: "DONE",
+        decision: "REJECTED",
+      }),
+    ).toEqual({ kind: "PRACTITIONER_DECISION", decision: "REJECTED" });
+    expect(
+      planTransition({ type: "APPROVE_PRACTITIONER", toStatus: "WAITING" }).kind,
+    ).toBe("AUDIT_ONLY");
   });
 });

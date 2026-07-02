@@ -3,6 +3,10 @@ import type {
   AuditTargetType,
   Device,
   DirectoryEntry,
+  Practice,
+  Practitioner,
+  PractitionerAccess,
+  PractitionerDirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
   IdentityRecord,
@@ -106,6 +110,32 @@ export type WorkTransitionInput = {
  * Both reads hit a queryable partition (NO profile scan, NO GSI). `transition`
  * rewrites BOTH projection items together (status is in both SKs).
  */
+export type PractitionerDecision = "APPROVED" | "REJECTED";
+
+export type PractitionerDecisionInput = {
+  decision: PractitionerDecision;
+  /** Decision notes (e.g. rejection reason) — written to `statusNotes`. */
+  notes?: string;
+  /** Ops user (Cognito sub) who made the decision — recorded in audit. */
+  decidedByOpsUserId: string;
+};
+
+/**
+ * Practitioners/practices on the shared table. Ops reads applications and
+ * writes ONE thing: the approval decision (status + statusNotes) — the write
+ * the practitioner portal reads back (mirror of the identity-decision seam).
+ */
+export interface PractitionerRepository {
+  getPractitioner(practitionerId: string): Promise<Practitioner | null>;
+  getPractice(practiceId: string): Promise<Practice | null>;
+  /** The practitioner's patient grants (Query, no scan). Read-only for Ops. */
+  listPatientAccess(practitionerId: string): Promise<PractitionerAccess[]>;
+  setApprovalDecision(
+    practitionerId: string,
+    input: PractitionerDecisionInput,
+  ): Promise<Practitioner>;
+}
+
 /**
  * Customer Directory — the producer-maintained listing projection (Ops-owned).
  * `listCustomers` is a single-partition Query (never a scan); `upsertEntry` is
@@ -115,6 +145,10 @@ export interface DirectoryRepository {
   listCustomers(): Promise<DirectoryEntry[]>;
   getEntry(profileId: string): Promise<DirectoryEntry | null>;
   upsertEntry(entry: DirectoryEntry): Promise<DirectoryEntry>;
+  listPractitioners(): Promise<PractitionerDirectoryEntry[]>;
+  upsertPractitionerEntry(
+    entry: PractitionerDirectoryEntry,
+  ): Promise<PractitionerDirectoryEntry>;
 }
 
 /** A signed change to the maintained Protected-Lives counters. */

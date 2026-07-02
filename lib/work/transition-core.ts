@@ -14,12 +14,19 @@ import type { WorkStatus } from "@/lib/work/status";
 export type TransitionPlan =
   | { kind: "IDENTITY_DECISION"; decision: "VERIFIED" | "REJECTED" }
   | { kind: "CARD_ACTIVATION" }
+  | { kind: "PRACTITIONER_DECISION"; decision: "APPROVED" | "REJECTED" }
   | { kind: "AUDIT_ONLY" }
   | { kind: "UNSUPPORTED"; reason: string };
 
 export function planTransition(input: {
   type: WorkType;
   toStatus: WorkStatus;
+  /**
+   * Explicit decision for decision-bearing types (practitioner approval): the
+   * generic "Approve" row action omits it (defaults to the positive decision);
+   * the workspace Approval panel passes APPROVED or REJECTED explicitly.
+   */
+  decision?: "APPROVED" | "REJECTED";
 }): TransitionPlan {
   if (input.type === "VERIFY_IDENTITY") {
     // Approving identity (completing the work) verifies the customer's identity.
@@ -51,8 +58,18 @@ export function planTransition(input: {
   ) {
     return { kind: "AUDIT_ONLY" };
   }
-  // APPROVE_PRACTITIONER needs a real decision write (practitioner status on
-  // the shared table) — fails closed until that persistence slice lands.
+  if (input.type === "APPROVE_PRACTITIONER") {
+    // Completing the work records the DECISION on the practitioner (status +
+    // notes) — the write the practitioner portal reads back. The work is DONE
+    // either way: a decision was made.
+    if (input.toStatus === "DONE") {
+      return {
+        kind: "PRACTITIONER_DECISION",
+        decision: input.decision ?? "APPROVED",
+      };
+    }
+    return { kind: "AUDIT_ONLY" };
+  }
   return {
     kind: "UNSUPPORTED",
     reason: `Persistence for work type ${input.type} is not wired yet.`,

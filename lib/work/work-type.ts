@@ -136,3 +136,14 @@ export const WORK_TYPES: readonly WorkType[] = [
 export function workTypeMeta(type: WorkType): WorkTypeMeta {
   return WORK_TYPE_META[type];
 }
+
+/**
+ * The record surface a work item's SUBJECT lives on: practitioner work opens
+ * the Practitioner Workspace; everything else opens the Customer Workspace.
+ * One helper so no surface hardcodes the route decision.
+ */
+export function workSubjectHref(domain: WorkDomain, subjectId: string): string {
+  return domain === "PRACTITIONER"
+    ? `/practitioners/${subjectId}`
+    : `/customers/${subjectId}`;
+}

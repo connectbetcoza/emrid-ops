@@ -19,6 +19,7 @@ import { MockDeviceRepository } from "@/lib/data/mock/device-repository";
 import { MockEmergencyProfileRepository } from "@/lib/data/mock/emergency-profile-repository";
 import { MockAggregateRepository } from "@/lib/data/mock/aggregate-repository";
 import { MockAuditRepository } from "@/lib/data/mock/audit-repository";
+import { MockPractitionerRepository } from "@/lib/data/mock/practitioner-repository";
 import { resetStore } from "@/lib/data/mock/store";
 import type { DynamoDeps } from "@/lib/data/aws/client";
 import type {
@@ -207,10 +208,13 @@ describe("producer keeps the directory fresh", () => {
         emergencyRepo: new MockEmergencyProfileRepository(),
         aggregateRepo: new MockAggregateRepository(),
         auditRepo: new MockAuditRepository(),
+        practitionerRepo: new MockPractitionerRepository(),
         directoryRepo: {
           listCustomers: async () => [],
           getEntry: async () => null,
           upsertEntry: async (e: DirectoryEntry) => { upserts.push(e); return e; },
+          listPractitioners: async () => [],
+          upsertPractitionerEntry: async (e: never) => e,
         },
       },
       upserts,

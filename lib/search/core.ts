@@ -8,6 +8,7 @@
 export type CommandGroup =
   | "Navigation"
   | "Customers"
+  | "Practitioners"
   | "Work Items"
   | "Actions";
 
@@ -26,6 +27,7 @@ export type CommandItem = {
 export const COMMAND_GROUP_ORDER: readonly CommandGroup[] = [
   "Navigation",
   "Customers",
+  "Practitioners",
   "Work Items",
   "Actions",
 ];

@@ -213,6 +213,8 @@ describe("shared entity enum values (reconciled with the Patient Platform)", () 
       IDENTITY_REJECTED: "IDENTITY_REJECTED",
       CARD_ACTIVATED: "CARD_ACTIVATED",
       WORK_TRANSITION: "OPS_WORK_TRANSITION",
+      PRACTITIONER_APPROVED: "PRACTITIONER_APPROVED",
+      PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED",
     });
   });
 });

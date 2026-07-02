@@ -3,6 +3,7 @@ import type {
   AuditRepository,
   DeviceRepository,
   EmergencyProfileRepository,
+  PractitionerRepository,
   ProfileRepository,
   WorkItemRepository,
 } from "@/lib/data/types";
@@ -31,6 +32,7 @@ export type TransitionDeps = {
   auditRepo: AuditRepository;
   emergencyRepo: EmergencyProfileRepository;
   aggregateRepo: AggregateRepository;
+  practitionerRepo: PractitionerRepository;
 };
 
 export type ExecuteTransitionInput = {
@@ -39,6 +41,8 @@ export type ExecuteTransitionInput = {
   step?: number;
   actorId: string;
   notes?: string;
+  /** Explicit decision for decision-bearing types (practitioner approval). */
+  decision?: "APPROVED" | "REJECTED";
 };
 
 export type ExecuteTransitionResult =
@@ -52,6 +56,7 @@ export async function executeTransition(
   const plan = planTransition({
     type: input.current.workType,
     toStatus: input.toStatus,
+    decision: input.decision,
   });
   if (plan.kind === "UNSUPPORTED") {
     return { ok: false, error: plan.reason };
@@ -118,14 +123,29 @@ export async function executeTransition(
     if (crossesProtectedBoundary(delta)) {
       await deps.aggregateRepo.adjustProtectedLives(delta);
     }
+  } else if (plan.kind === "PRACTITIONER_DECISION") {
+    // Record the decision on the practitioner (status + statusNotes) — the
+    // write the practitioner portal reads back. Practitioners are not
+    // customers: no protection facet is touched, the aggregate never moves.
+    await deps.practitionerRepo.setApprovalDecision(cid, {
+      decision: plan.decision,
+      notes: input.notes,
+      decidedByOpsUserId: input.actorId,
+    });
+    eventType =
+      plan.decision === "APPROVED"
+        ? OPS_AUDIT_EVENT.PRACTITIONER_APPROVED
+        : OPS_AUDIT_EVENT.PRACTITIONER_REJECTED;
   }
 
-  // 3. Append an audit event (append-only).
+  // 3. Append an audit event (append-only). Practitioner work targets the
+  //    practitioner's USER identity, not a patient PROFILE.
+  const practitionerWork = input.current.workDomain === "PRACTITIONER";
   await deps.auditRepo.record({
     eventType,
     actorType: "OPS",
     actorId: input.actorId,
-    targetType: "PROFILE",
+    targetType: practitionerWork ? "USER" : "PROFILE",
     targetId: input.current.customerId,
     metadata: { workItemId: input.current.workItemId, toStatus: input.toStatus },
   });
@@ -134,6 +154,8 @@ export async function executeTransition(
     ok: true,
     record,
     persistedDecision:
-      plan.kind === "IDENTITY_DECISION" || plan.kind === "CARD_ACTIVATION",
+      plan.kind === "IDENTITY_DECISION" ||
+      plan.kind === "CARD_ACTIVATION" ||
+      plan.kind === "PRACTITIONER_DECISION",
   };
 }

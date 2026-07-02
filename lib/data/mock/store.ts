@@ -1,5 +1,8 @@
 import type {
   AuditEvent,
+  Practice,
+  Practitioner,
+  PractitionerAccess,
   Device,
   DeviceStatus,
   DocumentMetadata,
@@ -36,6 +39,34 @@ export type MockStore = {
   emergencyProfiles: Map<string, EmergencyProfile>;
   /** The single Protected-Lives aggregate row (Ops-owned). */
   protectedLives: ProtectedLivesAggregate;
+  practitioners: Map<string, Practitioner>;
+  practices: Map<string, Practice>;
+  /** Patient grants keyed by practitionerId (read-only for Ops). */
+  practitionerAccess: Map<string, PractitionerAccess[]>;
+};
+
+/** A pending practitioner application (mirrors the Patient portal's write). */
+const SEED_PRACTICE: Practice = {
+  practiceId: "prc-9001",
+  name: "Rosebank Family Practice",
+  email: "reception@rosebankfp.co.za",
+  phone: "+27 11 555 0190",
+  address: "12 Baker St, Rosebank, Johannesburg",
+  status: "ACTIVE",
+  createdAt: "2026-06-20T08:00:00.000Z",
+  updatedAt: "2026-06-20T08:00:00.000Z",
+};
+
+const SEED_PRACTITIONER: Practitioner = {
+  practitionerId: "prac-9001",
+  userId: "prac-9001",
+  practiceId: "prc-9001",
+  fullName: "Dr. Johan Botha",
+  email: "johan.botha@rosebankfp.co.za",
+  registrationNumber: "MP-0123456",
+  status: "PENDING",
+  createdAt: "2026-06-26T09:00:00.000Z",
+  updatedAt: "2026-06-26T09:00:00.000Z",
 };
 
 const IDENTITY_STATUS: Record<
@@ -182,7 +213,31 @@ function freshStore(): MockStore {
     devices: new Map(),
     emergencyProfiles: new Map(),
     protectedLives: seedProtectedLives(),
+    practitioners: new Map([[SEED_PRACTITIONER.practitionerId, { ...SEED_PRACTITIONER }]]),
+    practices: new Map([[SEED_PRACTICE.practiceId, { ...SEED_PRACTICE }]]),
+    practitionerAccess: new Map(),
   };
+
+  // The pending application's APPROVE_PRACTITIONER work item (the producer
+  // would create this from the registration event; `customerId` carries the
+  // SUBJECT id — here the practitioner — so the workspace reads it the same way).
+  store.workItems.set("prac-9001-practitioner", {
+    workItemId: "prac-9001-practitioner",
+    customerId: "prac-9001",
+    workType: "APPROVE_PRACTITIONER",
+    workDomain: "PRACTITIONER",
+    status: "OPEN",
+    priority: "MEDIUM",
+    step: 0,
+    assignment: { assigneeName: null },
+    source: "SYSTEM",
+    title: "Approve practitioner",
+    subjectName: "Dr. Johan Botha",
+    nextAction: "Check registration and approve",
+    dueAt: "2026-06-29T09:00:00.000Z",
+    createdAt: "2026-06-26T09:00:00.000Z",
+    updatedAt: "2026-06-26T09:00:00.000Z",
+  });
 
   for (const d of seedDevices()) store.devices.set(d.deviceId, d);
 
@@ -244,4 +299,7 @@ export function resetStore(): void {
   mockStore.devices = fresh.devices;
   mockStore.emergencyProfiles = fresh.emergencyProfiles;
   mockStore.protectedLives = fresh.protectedLives;
+  mockStore.practitioners = fresh.practitioners;
+  mockStore.practices = fresh.practices;
+  mockStore.practitionerAccess = fresh.practitionerAccess;
 }

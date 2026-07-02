@@ -20552,6 +20552,39 @@ function itemToProtectedLivesAggregate(item) {
     version: Number(item.version ?? 0)
   };
 }
+var DIRECTORY_PK = "DIRECTORY";
+var DIRECTORY_CUSTOMER_PREFIX_SK = "CUSTOMER#";
+var directorySk = (profileId) => `${DIRECTORY_CUSTOMER_PREFIX_SK}${profileId}`;
+function directoryItem(entry) {
+  return {
+    PK: DIRECTORY_PK,
+    SK: directorySk(entry.profileId),
+    type: "CUSTOMER_DIRECTORY",
+    ...entry
+  };
+}
+function itemToDirectoryEntry(item) {
+  return {
+    profileId: String(item.profileId),
+    emrid: String(item.emrid),
+    firstName: String(item.firstName),
+    lastName: String(item.lastName),
+    displayName: String(item.displayName),
+    identityStatus: item.identityStatus,
+    verificationLevel: item.verificationLevel,
+    protectionStatus: item.protectionStatus,
+    readinessScore: Number(item.readinessScore ?? 0),
+    activeWorkCount: Number(item.activeWorkCount ?? 0),
+    lastActivityAt: typeof item.lastActivityAt === "string" ? item.lastActivityAt : null,
+    practitionerId: str(item.practitionerId),
+    profileComplete: Boolean(item.profileComplete),
+    emergencyInfoComplete: Boolean(item.emergencyInfoComplete),
+    emergencyContactsCount: Number(item.emergencyContactsCount ?? 0),
+    cardStatus: item.cardStatus,
+    joinedAt: String(item.joinedAt),
+    updatedAt: String(item.updatedAt)
+  };
+}
 
 // lib/work/producer-core.ts
 var str2 = (v) => typeof v === "string" ? v : void 0;
@@ -20595,6 +20628,27 @@ function cardCompletionForChange(change) {
   const deviceId = str2(img.deviceId);
   if (status === "ACTIVE" && previous !== "ACTIVE" && customerId && deviceId) {
     return { customerId, deviceId };
+  }
+  return null;
+}
+function directoryRefreshTarget(change) {
+  const { PK, SK } = change.keys;
+  if (PK === "DIRECTORY") return null;
+  const img = change.newImage ?? change.oldImage;
+  if (!img) return null;
+  if (PK.startsWith("PROFILE#")) {
+    if (SK === PROFILE_SK || SK === "EMERGENCY" || SK.startsWith("DEVICE#") || SK.startsWith("WORK#")) {
+      return PK.slice("PROFILE#".length) || null;
+    }
+    return null;
+  }
+  if (SK === DEVICE_SK) return str2(img.profileId) ?? null;
+  if (PK.startsWith("WORK#")) return str2(img.customerId) ?? null;
+  if (PK.startsWith("AUDIT#")) {
+    if (str2(img.targetType) === "PROFILE") return str2(img.targetId) ?? null;
+    const meta = img.metadata;
+    const fromMeta = meta && typeof meta === "object" ? meta.profileId : void 0;
+    return typeof fromMeta === "string" ? fromMeta : null;
   }
   return null;
 }
@@ -20661,6 +20715,47 @@ function parseStreamRecord(record) {
   };
 }
 
+// lib/customers/facets.ts
+var MEDICAL_INFO_KEYS = [
+  "bloodType",
+  "allergies",
+  "chronicConditions",
+  "medications",
+  "disabilities",
+  "emergencyInstructions",
+  "medicalAid",
+  "preferredHospital",
+  "familyDoctor"
+];
+function isProfileComplete(profile) {
+  return Boolean(profile.firstName && profile.lastName && profile.dateOfBirth);
+}
+function hasEmergencyInfo(emergency) {
+  if (!emergency) return false;
+  return MEDICAL_INFO_KEYS.some((key) => emergency[key] !== void 0);
+}
+function emergencyContactCount(emergency) {
+  return emergency?.emergencyContacts?.value.length ?? 0;
+}
+
+// lib/readiness/core.ts
+var READY_MIN = 85;
+var NEARLY_MIN = 60;
+function bandForScore(score) {
+  if (score >= READY_MIN) return "READY";
+  if (score >= NEARLY_MIN) return "NEARLY";
+  return "NOT_READY";
+}
+function computeReadiness(factors) {
+  const totalWeight = factors.reduce((sum, f) => sum + f.weight, 0);
+  const metWeight = factors.reduce(
+    (sum, f) => sum + (f.met ? f.weight : 0),
+    0
+  );
+  const score = totalWeight === 0 ? 0 : Math.round(metWeight / totalWeight * 100);
+  return { score, band: bandForScore(score), factors };
+}
+
 // lib/customers/readiness.ts
 function customerReadinessFactors(c) {
   return [
@@ -20686,6 +20781,9 @@ function customerReadinessFactors(c) {
     { key: "card", label: "Card active", weight: 15, met: c.cardStatus === "ACTIVE" }
   ];
 }
+function readinessForCustomer(c) {
+  return computeReadiness(customerReadinessFactors(c));
+}
 function protectionStatusFromFacets(f) {
   if (f.cardActive && f.identityVerified && f.emergencyPresent) return "PROTECTED";
   if (!f.cardActive && !f.identityVerified && !f.emergencyPresent) {
@@ -20701,21 +20799,57 @@ function protectionStatus(c) {
   });
 }
 
-// lib/customers/facets.ts
-var MEDICAL_INFO_KEYS = [
-  "bloodType",
-  "allergies",
-  "chronicConditions",
-  "medications",
-  "disabilities",
-  "emergencyInstructions",
-  "medicalAid",
-  "preferredHospital",
-  "familyDoctor"
-];
-function hasEmergencyInfo(emergency) {
-  if (!emergency) return false;
-  return MEDICAL_INFO_KEYS.some((key) => emergency[key] !== void 0);
+// lib/customers/directory-core.ts
+var TO_IDENTITY_STATUS = {
+  UNVERIFIED: "UNVERIFIED",
+  PENDING: "PENDING",
+  VERIFIED: "VERIFIED",
+  REJECTED: "UNVERIFIED"
+};
+var TO_CARD_STATUS = {
+  PENDING: "PENDING",
+  ACTIVE: "ACTIVE",
+  SUSPENDED: "SUSPENDED",
+  REVOKED: "NONE",
+  REPLACED: "NONE"
+};
+var ACTIVE_WORK = /* @__PURE__ */ new Set(["OPEN", "IN_PROGRESS", "WAITING", "BLOCKED"]);
+function customerFromState(input) {
+  const { profile, emergency, devices } = input;
+  const device = devices.find((d) => d.status === "ACTIVE") ?? devices[0];
+  return {
+    id: profile.profileId,
+    fullName: `${profile.firstName} ${profile.lastName}`.trim(),
+    email: "",
+    joinedAt: profile.createdAt,
+    profileComplete: isProfileComplete(profile),
+    identityStatus: TO_IDENTITY_STATUS[profile.identityVerificationStatus ?? "UNVERIFIED"] ?? "UNVERIFIED",
+    emergencyInfoComplete: hasEmergencyInfo(emergency),
+    emergencyContactsCount: emergencyContactCount(emergency),
+    cardStatus: device ? TO_CARD_STATUS[device.status] : "NONE"
+  };
+}
+function buildDirectoryEntry(input) {
+  const customer = customerFromState(input);
+  return {
+    profileId: input.profile.profileId,
+    emrid: input.profile.emrid,
+    firstName: input.profile.firstName,
+    lastName: input.profile.lastName,
+    displayName: customer.fullName,
+    identityStatus: input.profile.identityVerificationStatus ?? "UNVERIFIED",
+    verificationLevel: input.profile.verificationLevel,
+    protectionStatus: protectionStatus(customer),
+    readinessScore: readinessForCustomer(customer).score,
+    activeWorkCount: input.workRecords.filter((w) => ACTIVE_WORK.has(w.status)).length,
+    lastActivityAt: input.auditEvents[0]?.timestamp ?? null,
+    profileComplete: customer.profileComplete,
+    emergencyInfoComplete: customer.emergencyInfoComplete,
+    emergencyContactsCount: customer.emergencyContactsCount,
+    cardStatus: customer.cardStatus,
+    joinedAt: input.profile.createdAt,
+    updatedAt: input.now
+  };
 }
 
 // lib/protection/aggregate.ts
@@ -20793,7 +20927,28 @@ async function completeCardWork(deps, completion) {
   });
   return { created: false, completed: true, workItemId };
 }
-async function produceFromChange(deps, change, now = nowIso()) {
+async function refreshDirectoryEntry(deps, profileId, now) {
+  const [profile, emergency, devices, workRecords, auditEvents] = await Promise.all([
+    deps.profileRepo.getProfile(profileId),
+    deps.emergencyRepo.getEmergencyProfile(profileId),
+    deps.deviceRepo.listForCustomer(profileId),
+    deps.workRepo.listForCustomer(profileId),
+    deps.auditRepo.listForProfile(profileId)
+  ]);
+  if (!profile) return false;
+  await deps.directoryRepo.upsertEntry(
+    buildDirectoryEntry({
+      profile,
+      emergency,
+      devices,
+      workRecords,
+      auditEvents,
+      now
+    })
+  );
+  return true;
+}
+async function applyWorkAction(deps, change, now) {
   const completion = cardCompletionForChange(change);
   if (completion) return completeCardWork(deps, completion);
   const intent = workIntentForChange(change);
@@ -20809,6 +20964,14 @@ async function produceFromChange(deps, change, now = nowIso()) {
   await deps.workRepo.create(record);
   return { created: true, workItemId };
 }
+async function produceFromChange(deps, change, now = nowIso()) {
+  const result = await applyWorkAction(deps, change, now);
+  const refreshTarget = directoryRefreshTarget(change);
+  if (refreshTarget) {
+    await refreshDirectoryEntry(deps, refreshTarget, now);
+  }
+  return result;
+}
 async function produceFromStreamRecords(deps, records, now = nowIso()) {
   const results = [];
   for (const raw of records) {
@@ -20820,7 +20983,7 @@ async function produceFromStreamRecords(deps, records, now = nowIso()) {
 }
 
 // lib/data/index.ts
-var import_server_only9 = __toESM(require_server_only_stub());
+var import_server_only10 = __toESM(require_server_only_stub());
 
 // lib/config/index.ts
 function normalize(value) {
@@ -21398,6 +21561,37 @@ var MockAggregateRepository = class {
   }
 };
 
+// lib/data/mock/directory-repository.ts
+var MockDirectoryRepository = class {
+  entryFor(profileId) {
+    const profile = mockStore.profiles.get(profileId);
+    if (!profile) return null;
+    return buildDirectoryEntry({
+      profile,
+      emergency: mockStore.emergencyProfiles.get(profileId) ?? null,
+      devices: [...mockStore.devices.values()].filter(
+        (d) => d.profileId === profileId
+      ),
+      workRecords: [...mockStore.workItems.values()].filter(
+        (w) => w.customerId === profileId
+      ),
+      auditEvents: mockStore.audit.filter(
+        (e) => e.targetType === "PROFILE" ? e.targetId === profileId : e.metadata?.profileId === profileId
+      ).slice().reverse(),
+      now: nowIso()
+    });
+  }
+  async listCustomers() {
+    return [...mockStore.profiles.keys()].map((id) => this.entryFor(id)).filter((e) => e !== null);
+  }
+  async getEntry(profileId) {
+    return this.entryFor(profileId);
+  }
+  async upsertEntry(entry) {
+    return { ...entry };
+  }
+};
+
 // lib/data/aws/profile-repository.ts
 var import_server_only2 = __toESM(require_server_only_stub());
 var import_lib_dynamodb2 = require("@aws-sdk/lib-dynamodb");
@@ -21889,6 +22083,55 @@ var DynamoAggregateRepository = class {
   }
 };
 
+// lib/data/aws/directory-repository.ts
+var import_server_only9 = __toESM(require_server_only_stub());
+var import_lib_dynamodb9 = require("@aws-sdk/lib-dynamodb");
+var DynamoDirectoryRepository = class {
+  constructor(injected) {
+    this.injected = injected;
+  }
+  deps() {
+    return this.injected ?? defaultDeps();
+  }
+  async listCustomers() {
+    const { doc, table } = this.deps();
+    const entries = [];
+    let ExclusiveStartKey;
+    do {
+      const page = await doc.send(
+        new import_lib_dynamodb9.QueryCommand({
+          TableName: table,
+          KeyConditionExpression: "PK = :pk",
+          ExpressionAttributeValues: { ":pk": DIRECTORY_PK },
+          ExclusiveStartKey
+        })
+      );
+      for (const item of page.Items ?? []) {
+        entries.push(itemToDirectoryEntry(item));
+      }
+      ExclusiveStartKey = page.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
+    return entries;
+  }
+  async getEntry(profileId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb9.GetCommand({
+        TableName: table,
+        Key: { PK: DIRECTORY_PK, SK: directorySk(profileId) }
+      })
+    );
+    return result.Item ? itemToDirectoryEntry(result.Item) : null;
+  }
+  async upsertEntry(entry) {
+    const { doc, table } = this.deps();
+    await doc.send(
+      new import_lib_dynamodb9.PutCommand({ TableName: table, Item: directoryItem(entry) })
+    );
+    return entry;
+  }
+};
+
 // lib/data/index.ts
 function pickMigrated(mock, aws) {
   return config.useMockData ? mock : aws;
@@ -21900,6 +22143,7 @@ var mockWork = new MockWorkItemRepository();
 var mockDevice = new MockDeviceRepository();
 var mockEmergency = new MockEmergencyProfileRepository();
 var mockAggregate = new MockAggregateRepository();
+var mockDirectory = new MockDirectoryRepository();
 var awsProfile = new DynamoProfileRepository();
 var awsDocument = new DynamoDocumentRepository();
 var awsAudit = new DynamoAuditRepository();
@@ -21907,6 +22151,7 @@ var awsWork = new DynamoWorkItemRepository();
 var awsDevice = new DynamoDeviceRepository();
 var awsEmergency = new DynamoEmergencyProfileRepository();
 var awsAggregate = new DynamoAggregateRepository();
+var awsDirectory = new DynamoDirectoryRepository();
 function getProfileRepository() {
   return pickMigrated(mockProfile, awsProfile);
 }
@@ -21925,6 +22170,9 @@ function getEmergencyProfileRepository() {
 function getAggregateRepository() {
   return pickMigrated(mockAggregate, awsAggregate);
 }
+function getDirectoryRepository() {
+  return pickMigrated(mockDirectory, awsDirectory);
+}
 
 // lambda/work-item-producer.ts
 async function handler(event) {
@@ -21937,7 +22185,8 @@ async function handler(event) {
       deviceRepo: getDeviceRepository(),
       emergencyRepo: getEmergencyProfileRepository(),
       aggregateRepo: getAggregateRepository(),
-      auditRepo: getAuditRepository()
+      auditRepo: getAuditRepository(),
+      directoryRepo: getDirectoryRepository()
     },
     records,
     (/* @__PURE__ */ new Date()).toISOString()

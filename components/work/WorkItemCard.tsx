@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { workSubjectHref } from "@/lib/work/work-type";
 import { ArrowRight, CalendarClock, UserCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -23,7 +24,7 @@ export function WorkItemCard({
   const owner = item.assignment.assigneeName ?? "Unassigned";
   const titleNode = item.customerId ? (
     <Link
-      href={`/customers/${item.customerId}`}
+      href={workSubjectHref(item.domain, item.customerId)}
       className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {item.title}

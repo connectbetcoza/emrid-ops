@@ -34,6 +34,7 @@ import {
   getDeviceRepository,
   getDirectoryRepository,
   getEmergencyProfileRepository,
+  getPractitionerRepository,
   getProfileRepository,
   getWorkItemRepository,
 } from "@/lib/data";
@@ -54,6 +55,7 @@ export async function handler(event: DynamoDBStreamEvent): Promise<void> {
       aggregateRepo: getAggregateRepository(),
       auditRepo: getAuditRepository(),
       directoryRepo: getDirectoryRepository(),
+      practitionerRepo: getPractitionerRepository(),
     },
     records,
     new Date().toISOString(),

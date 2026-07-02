@@ -5,6 +5,7 @@ import { MockAuditRepository } from "@/lib/data/mock/audit-repository";
 import { MockDeviceRepository } from "@/lib/data/mock/device-repository";
 import { MockEmergencyProfileRepository } from "@/lib/data/mock/emergency-profile-repository";
 import { MockAggregateRepository } from "@/lib/data/mock/aggregate-repository";
+import { MockPractitionerRepository } from "@/lib/data/mock/practitioner-repository";
 import { mockStore, resetStore } from "@/lib/data/mock/store";
 import { DynamoWorkItemRepository } from "@/lib/data/aws/work-repository";
 import type { DynamoDeps } from "@/lib/data/aws/client";
@@ -15,6 +16,7 @@ import {
   getAuditRepository,
   getDeviceRepository,
   getEmergencyProfileRepository,
+  getPractitionerRepository,
   getProfileRepository,
   getWorkItemRepository,
 } from "@/lib/data";
@@ -182,6 +184,7 @@ describe("executeTransition: approve identity → both items moved, profile veri
         deviceRepo: new MockDeviceRepository(),
         emergencyRepo: new MockEmergencyProfileRepository(),
         aggregateRepo: new MockAggregateRepository(),
+        practitionerRepo: new MockPractitionerRepository(),
       },
       { current: work, toStatus: "DONE", actorId: "ops-1" },
     );
@@ -215,6 +218,7 @@ describe("Phase 3 seam via the factory (mock mode)", () => {
         deviceRepo: getDeviceRepository(),
         emergencyRepo: getEmergencyProfileRepository(),
         aggregateRepo: getAggregateRepository(),
+        practitionerRepo: getPractitionerRepository(),
       },
       { current: before, toStatus: "DONE", actorId: "ops-1" },
     );

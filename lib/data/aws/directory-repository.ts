@@ -1,13 +1,20 @@
 import "server-only";
 import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import type { DirectoryEntry } from "@/lib/data/entities";
+import type {
+  DirectoryEntry,
+  PractitionerDirectoryEntry,
+} from "@/lib/data/entities";
 import type { DirectoryRepository } from "@/lib/data/types";
 import { defaultDeps, type DynamoDeps } from "@/lib/data/aws/client";
 import {
+  DIRECTORY_CUSTOMER_PREFIX_SK,
   DIRECTORY_PK,
+  DIRECTORY_PRACTITIONER_PREFIX_SK,
   directoryItem,
   directorySk,
   itemToDirectoryEntry,
+  itemToPractitionerDirectoryEntry,
+  practitionerDirectoryItem,
 } from "@/lib/data/aws/keys";
 
 /**
@@ -30,8 +37,13 @@ export class DynamoDirectoryRepository implements DirectoryRepository {
       const page = await doc.send(
         new QueryCommand({
           TableName: table,
-          KeyConditionExpression: "PK = :pk",
-          ExpressionAttributeValues: { ":pk": DIRECTORY_PK },
+          // begins_with keeps customer and practitioner entries separate — the
+          // partition holds both kinds.
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": DIRECTORY_PK,
+            ":sk": DIRECTORY_CUSTOMER_PREFIX_SK,
+          },
           ExclusiveStartKey,
         }),
       );
@@ -60,6 +72,42 @@ export class DynamoDirectoryRepository implements DirectoryRepository {
     const { doc, table } = this.deps();
     await doc.send(
       new PutCommand({ TableName: table, Item: directoryItem(entry) }),
+    );
+    return entry;
+  }
+
+  async listPractitioners(): Promise<PractitionerDirectoryEntry[]> {
+    const { doc, table } = this.deps();
+    const entries: PractitionerDirectoryEntry[] = [];
+    let ExclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await doc.send(
+        new QueryCommand({
+          TableName: table,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": DIRECTORY_PK,
+            ":sk": DIRECTORY_PRACTITIONER_PREFIX_SK,
+          },
+          ExclusiveStartKey,
+        }),
+      );
+      for (const item of page.Items ?? []) {
+        entries.push(itemToPractitionerDirectoryEntry(item));
+      }
+      ExclusiveStartKey = page.LastEvaluatedKey as
+        | Record<string, unknown>
+        | undefined;
+    } while (ExclusiveStartKey);
+    return entries;
+  }
+
+  async upsertPractitionerEntry(
+    entry: PractitionerDirectoryEntry,
+  ): Promise<PractitionerDirectoryEntry> {
+    const { doc, table } = this.deps();
+    await doc.send(
+      new PutCommand({ TableName: table, Item: practitionerDirectoryItem(entry) }),
     );
     return entry;
   }

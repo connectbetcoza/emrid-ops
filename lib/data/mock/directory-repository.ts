@@ -1,4 +1,7 @@
-import type { DirectoryEntry } from "@/lib/data/entities";
+import type {
+  DirectoryEntry,
+  PractitionerDirectoryEntry,
+} from "@/lib/data/entities";
 import type { DirectoryRepository } from "@/lib/data/types";
 import { mockStore } from "@/lib/data/mock/store";
 import { buildDirectoryEntry } from "@/lib/customers/directory-core";
@@ -47,6 +50,25 @@ export class MockDirectoryRepository implements DirectoryRepository {
   }
 
   async upsertEntry(entry: DirectoryEntry): Promise<DirectoryEntry> {
+    return { ...entry };
+  }
+
+  async listPractitioners(): Promise<PractitionerDirectoryEntry[]> {
+    return [...mockStore.practitioners.values()].map((prac) => ({
+      practitionerId: prac.practitionerId,
+      fullName: prac.fullName,
+      email: prac.email,
+      practiceId: prac.practiceId,
+      practiceName: mockStore.practices.get(prac.practiceId)?.name,
+      status: prac.status,
+      registeredAt: prac.createdAt,
+      updatedAt: prac.updatedAt,
+    }));
+  }
+
+  async upsertPractitionerEntry(
+    entry: PractitionerDirectoryEntry,
+  ): Promise<PractitionerDirectoryEntry> {
     return { ...entry };
   }
 }

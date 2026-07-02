@@ -7,6 +7,7 @@ import { Queue, type QueueBulkAction } from "@/components/queue/Queue";
 import { QueueCard } from "@/components/queue/QueueCard";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { transitionWorkItem } from "@/lib/work/server-actions";
+import { workSubjectHref } from "@/lib/work/work-type";
 import { workActions } from "@/lib/work/actions";
 import { WORK_STATUSES, STATUS_META } from "@/lib/work/status";
 import { PRIORITIES, PRIORITY_META, byPriorityDesc } from "@/lib/work/priority";
@@ -171,7 +172,7 @@ export function WorkQueue({
         );
         return item.customerId ? (
           <Link
-            href={`/customers/${item.customerId}`}
+            href={workSubjectHref(item.domain, item.customerId)}
             className="flex min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {card}
