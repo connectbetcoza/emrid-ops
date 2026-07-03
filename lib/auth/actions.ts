@@ -11,9 +11,12 @@ import {
 import { LOGIN_PATH } from "@/lib/auth/constants";
 import {
   missingCredentialsMessage,
+  NO_OPS_ACCESS_MESSAGE,
   safeNextPath,
   signInErrorMessage,
 } from "@/lib/auth/login-core";
+import { isAuthorizedOpsUser, opsUserFromIdToken } from "@/lib/auth/session";
+import { verifyIdToken } from "@/lib/auth/verifier";
 
 /**
  * Auth server actions for EMRID Operations staff — the single server-side entry
@@ -47,6 +50,24 @@ export async function signIn(
 
   try {
     const tokens = await initiateAuth(email.trim(), password);
+
+    // Staff gate BEFORE any cookie exists: the pool is shared with the Patient
+    // Platform, so valid credentials prove pool membership, not staff
+    // membership. A token without an Ops role group never becomes a session —
+    // revoke it (best-effort) and re-render the form.
+    const payload = await verifyIdToken(tokens.idToken);
+    const user = payload ? opsUserFromIdToken(payload) : null;
+    if (!isAuthorizedOpsUser(user)) {
+      if (tokens.refreshToken) {
+        try {
+          await revokeToken(tokens.refreshToken);
+        } catch {
+          // Best-effort: the token was never stored anywhere.
+        }
+      }
+      return { error: NO_OPS_ACCESS_MESSAGE };
+    }
+
     await writeSessionCookies(tokens);
   } catch (error) {
     const code = error instanceof CognitoError ? error.code : "UnknownError";

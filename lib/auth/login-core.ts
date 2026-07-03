@@ -72,6 +72,16 @@ export function signInErrorMessage(code: string): string {
 }
 
 /**
+ * Shown when valid pool credentials carry no Ops role group — a patient or
+ * practitioner account signing in at the staff door. Honest by design: Cognito's
+ * public client already confirms credential validity to anyone who asks it
+ * directly, so collapsing this into "incorrect password" would mislead a
+ * misconfigured staff member without denying an attacker anything.
+ */
+export const NO_OPS_ACCESS_MESSAGE =
+  "This account doesn't have access to EMRID Operations. Contact an administrator.";
+
+/**
  * Validate the submitted credentials are present. Returns a message when the
  * form is incomplete, else `null`. (Authentication itself is Cognito's job.)
  */

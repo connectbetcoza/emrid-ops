@@ -14,13 +14,24 @@ export function isActiveOpsUser(user: OpsUser | null | undefined): boolean {
 }
 
 /**
+ * Staff membership gate. The Cognito pool is SHARED with the Patient Platform
+ * (patients and practitioners hold pool accounts too), so a verified token
+ * proves pool membership — NOT staff membership. Only a user carrying at least
+ * one valid `OpsRole` group is Operations staff; everyone else fails closed.
+ */
+export function isAuthorizedOpsUser(user: OpsUser | null | undefined): boolean {
+  return isActiveOpsUser(user) && (user?.roles.length ?? 0) > 0;
+}
+
+/**
  * Resolve the effective session user from the adapter inputs.
  *
  *   mockMode → the demo Ops user (local dev / non-production).
  *   otherwise → the Cognito-verified user, if any (wired in a later sprint).
  *
- * Fail closed: a non-active user resolves to `null`. This is the single place
- * the "who is signed in" decision is made.
+ * Fail closed: a non-active user — or any pool user carrying no Ops role
+ * (a patient or practitioner account) — resolves to `null`. This is the
+ * single place the "who is signed in" decision is made.
  */
 export function resolveOpsSession(input: {
   mockMode: boolean;
@@ -28,7 +39,7 @@ export function resolveOpsSession(input: {
   verifiedUser: OpsUser | null;
 }): OpsUser | null {
   const candidate = input.mockMode ? input.mockUser : input.verifiedUser;
-  return isActiveOpsUser(candidate) ? candidate : null;
+  return isAuthorizedOpsUser(candidate) ? candidate : null;
 }
 
 /** Map Cognito `cognito:groups` to valid OpsRoles (operator names groups exactly). */
@@ -65,9 +76,9 @@ export function opsUserFromIdToken(payload: {
 
 /**
  * Where to send a user after a successful login (or when they hit `/`).
- * Active user → the dashboard; otherwise back to login. Returns only a path —
- * never the user's status — so nothing sensitive crosses to the client.
+ * Authorized staff → the dashboard; otherwise back to login. Returns only a
+ * path — never the user's status — so nothing sensitive crosses to the client.
  */
 export function postLoginRedirect(user: OpsUser | null): string {
-  return isActiveOpsUser(user) ? DEFAULT_AUTHENTICATED_PATH : LOGIN_PATH;
+  return isAuthorizedOpsUser(user) ? DEFAULT_AUTHENTICATED_PATH : LOGIN_PATH;
 }

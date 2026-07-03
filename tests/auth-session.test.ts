@@ -105,3 +105,75 @@ describe("postLoginRedirect", () => {
     expect(postLoginRedirect(opsUser("DISABLED"))).toBe("/login");
   });
 });
+
+// ── Finding 1: pool membership is NOT staff membership (fail-closed gate) ─────
+// The Cognito pool is shared with the Patient Platform, so patients and
+// practitioners hold valid pool credentials. Only a token carrying at least one
+// valid Ops role group may ever resolve to an Operations session.
+
+import { isAuthorizedOpsUser } from "@/lib/auth/session";
+
+describe("Ops staff gate (isAuthorizedOpsUser + resolveOpsSession)", () => {
+  const resolve = (verifiedUser: OpsUser | null) =>
+    resolveOpsSession({ mockMode: false, mockUser: null, verifiedUser });
+
+  it("1. verified token with NO groups → rejected (null session)", () => {
+    const user = opsUserFromIdToken({
+      sub: "patient-sub",
+      email: "patient@example.com",
+      groups: [],
+    });
+    expect(user.roles).toEqual([]);
+    expect(isAuthorizedOpsUser(user)).toBe(false);
+    expect(resolve(user)).toBeNull();
+  });
+
+  it("2. verified token with UNKNOWN groups only → rejected (null session)", () => {
+    const user = opsUserFromIdToken({
+      sub: "someone",
+      email: "someone@example.com",
+      groups: ["patients", "beta-testers", "ADMIN"], // none are OpsRoles
+    });
+    expect(user.roles).toEqual([]);
+    expect(isAuthorizedOpsUser(user)).toBe(false);
+    expect(resolve(user)).toBeNull();
+  });
+
+  it("3. verified token with a valid Ops group → accepted", () => {
+    const user = opsUserFromIdToken({
+      sub: "staff-sub",
+      email: "officer@emrid.co.za",
+      groups: ["IDENTITY_OFFICER"],
+    });
+    expect(isAuthorizedOpsUser(user)).toBe(true);
+    expect(resolve(user)).toEqual(user);
+    // A mix of unknown + valid groups is also staff.
+    const mixed = opsUserFromIdToken({
+      sub: "staff-2",
+      email: "admin@emrid.co.za",
+      groups: ["unknown-group", "OPERATIONS_ADMIN"],
+    });
+    expect(resolve(mixed)).toEqual(mixed);
+  });
+
+  it("4. a practitioner-style pool user (no Ops group) can never access Ops", () => {
+    // Shaped like Dr Michael Edwards' provisioned login: real pool account,
+    // name + email claims, zero Cognito groups.
+    const dr = opsUserFromIdToken({
+      sub: "32358424-0000-0000-0000-000000000000",
+      email: "dr@edwardsfp.co.za",
+      name: "Dr Michael Edwards",
+      groups: [],
+    });
+    expect(isAuthorizedOpsUser(dr)).toBe(false);
+    expect(resolve(dr)).toBeNull();
+    expect(postLoginRedirect(dr)).toBe("/login");
+  });
+
+  it("an ACTIVE user without roles is active but NOT authorized (gate is additive)", () => {
+    const roleless: OpsUser = { ...opsUser(), roles: [] };
+    expect(isActiveOpsUser(roleless)).toBe(true);
+    expect(isAuthorizedOpsUser(roleless)).toBe(false);
+    expect(resolve(roleless)).toBeNull();
+  });
+});
