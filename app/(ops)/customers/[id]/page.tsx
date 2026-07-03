@@ -12,8 +12,16 @@ import { ReadinessBadge } from "@/components/readiness/ReadinessBadge";
 import { ProtectionStatusBadge } from "@/components/customers/ProtectionStatusBadge";
 import { ActiveWork } from "@/components/customers/ActiveWork";
 import { CardFulfilmentPack } from "@/components/customers/CardFulfilmentPack";
+import { DevicesCard } from "@/components/customers/DevicesCard";
 import { InternalNotes } from "@/components/customers/InternalNotes";
+import {
+  PractitionersCard,
+  type LinkedPractitioner,
+} from "@/components/customers/PractitionersCard";
 import { QuickActions } from "@/components/customers/QuickActions";
+import { SupportQueryPanel } from "@/components/customers/SupportQueryPanel";
+import { WorkHistory } from "@/components/customers/WorkHistory";
+import { ActionPanel } from "@/components/workspace/ActionPanel";
 import { Text } from "@/components/ui/Typography";
 import { getCustomerState } from "@/lib/customers/state";
 import { protectionFor } from "@/lib/protection/state";
@@ -22,17 +30,19 @@ import {
   fulfilmentDevice,
   type FulfilmentPack,
 } from "@/lib/customers/fulfilment-pack";
-import { customerNotes, customerSummary } from "@/lib/customers/workspace";
+import { customerSummary } from "@/lib/customers/workspace";
 import { auditTimeline } from "@/lib/customers/audit-timeline";
 import {
   getAuditRepository,
   getDeviceRepository,
+  getNoteRepository,
+  getPractitionerRepository,
   getProfileRepository,
   getWorkItemRepository,
 } from "@/lib/data";
 import { config } from "@/lib/config";
 import { recordToWorkItem } from "@/lib/work/record";
-import { activeWork } from "@/lib/work/projections";
+import { activeWork, workHistory } from "@/lib/work/projections";
 
 export async function generateMetadata({
   params,
@@ -59,12 +69,39 @@ export default async function CustomerWorkspacePage({
   if (!customer) notFound();
 
   const { status, readiness } = protectionFor(customer);
-  const [records, auditEvents] = await Promise.all([
-    getWorkItemRepository().listForCustomer(customer.id),
-    getAuditRepository().listForProfile(customer.id),
-  ]);
-  const work = activeWork(records.map(recordToWorkItem), customer.id);
+  const [records, auditEvents, notes, devices, accessGrants] =
+    await Promise.all([
+      getWorkItemRepository().listForCustomer(customer.id),
+      getAuditRepository().listForProfile(customer.id),
+      getNoteRepository().listForSubject(customer.id),
+      getDeviceRepository().listForCustomer(customer.id),
+      getPractitionerRepository().listAccessForProfile(customer.id),
+    ]);
+  const items = records.map(recordToWorkItem);
+  const work = activeWork(items, customer.id);
+  const history = workHistory(items, customer.id);
   const timeline = auditTimeline(auditEvents);
+
+  // Resolve grant rows to practitioner names (bounded point reads — a customer
+  // has at most a handful of grants). Missing records render honestly by id.
+  const practitionerRepo = getPractitionerRepository();
+  const linkedPractitioners: LinkedPractitioner[] = await Promise.all(
+    accessGrants.map(async (grant) => {
+      const practitioner = await practitionerRepo.getPractitioner(
+        grant.practitionerId,
+      );
+      const practice = practitioner
+        ? await practitionerRepo.getPractice(practitioner.practiceId)
+        : null;
+      return {
+        practitionerId: grant.practitionerId,
+        fullName: practitioner?.fullName ?? grant.practitionerId,
+        practiceName: practice?.name,
+        grantedAt: grant.grantedAt,
+        active: grant.status === "ACTIVE",
+      };
+    }),
+  );
 
   // Card Fulfilment Pack — a Workspace section, shown while the customer has
   // active ISSUE_CARD work so the fulfilment officer never asks "what do I
@@ -75,10 +112,7 @@ export default async function CustomerWorkspacePage({
   let showFulfilmentPack = false;
   if (hasCardWork) {
     showFulfilmentPack = true;
-    const [profile, devices] = await Promise.all([
-      getProfileRepository().getProfile(customer.id),
-      getDeviceRepository().listForCustomer(customer.id),
-    ]);
+    const profile = await getProfileRepository().getProfile(customer.id);
     const device = fulfilmentDevice(devices);
     if (device) {
       const deviceEvents = await getAuditRepository().listForTarget(
@@ -124,9 +158,18 @@ export default async function CustomerWorkspacePage({
             {showFulfilmentPack ? (
               <CardFulfilmentPack pack={fulfilmentPack} />
             ) : null}
+            <DevicesCard devices={devices} />
+            <PractitionersCard practitioners={linkedPractitioners} />
           </>
         }
-        actions={<QuickActions work={work} />}
+        actions={
+          <>
+            <QuickActions work={work} />
+            <ActionPanel title="Customer support">
+              <SupportQueryPanel customerId={customer.id} />
+            </ActionPanel>
+          </>
+        }
         timeline={<TimelineArea events={timeline} />}
       >
         <TabbedContentArea
@@ -153,12 +196,17 @@ export default async function CustomerWorkspacePage({
             {
               id: "work",
               label: work.length > 0 ? `Active work · ${work.length}` : "Active work",
-              content: <ActiveWork items={work} />,
+              content: (
+                <div className="space-y-4">
+                  <ActiveWork items={work} />
+                  <WorkHistory items={history} />
+                </div>
+              ),
             },
             {
               id: "notes",
-              label: "Notes",
-              content: <InternalNotes initialNotes={customerNotes(customer)} />,
+              label: notes.length > 0 ? `Notes · ${notes.length}` : "Notes",
+              content: <InternalNotes subjectId={customer.id} notes={notes} />,
             },
           ]}
         />

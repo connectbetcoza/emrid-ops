@@ -5,6 +5,7 @@ import type {
   PractitionerDirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
+  OpsNote,
   Practice,
   Practitioner,
   PractitionerAccess,
@@ -497,5 +498,32 @@ export function itemToPractitionerAccess(
     grantedAt: String(item.grantedAt),
     revokedAt: str(item.revokedAt),
     status: item.status as PractitionerAccess["status"],
+  };
+}
+
+// ── Internal notes (Ops-owned, PROFILE# partition) ─────────────────────────────
+
+export const OPSNOTE_PREFIX_SK = "OPSNOTE#";
+/** SK sorts by createdAt (ISO) so a descending Query reads newest-first. */
+export const opsNoteSk = (createdAt: string, noteId: string): string =>
+  `${OPSNOTE_PREFIX_SK}${createdAt}#${noteId}`;
+
+export function opsNoteItem(note: OpsNote): Record<string, unknown> {
+  return {
+    PK: profilePk(note.subjectId),
+    SK: opsNoteSk(note.createdAt, note.noteId),
+    type: "OPS_NOTE",
+    ...note,
+  };
+}
+
+export function itemToOpsNote(item: Record<string, unknown>): OpsNote {
+  return {
+    noteId: String(item.noteId),
+    subjectId: String(item.subjectId),
+    authorId: String(item.authorId),
+    authorName: String(item.authorName),
+    body: String(item.body),
+    createdAt: String(item.createdAt),
   };
 }

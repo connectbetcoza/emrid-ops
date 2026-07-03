@@ -95,27 +95,3 @@ export function customerTimeline(c: Customer): TimelineEvent[] {
   return events;
 }
 
-export type InternalNote = {
-  id: string;
-  author: string;
-  time: string;
-  body: string;
-};
-
-/** A small set of mock internal notes for the demo. */
-export function customerNotes(c: Customer): InternalNote[] {
-  return [
-    {
-      id: "n1",
-      author: "Naledi Khumalo",
-      time: "2 days ago",
-      body: `Spoke with ${c.fullName.split(" ")[0]} — keen to get protected quickly. Following up on outstanding steps.`,
-    },
-    {
-      id: "n2",
-      author: "System",
-      time: formatDate(c.joinedAt),
-      body: "Customer account created via practitioner onboarding.",
-    },
-  ];
-}

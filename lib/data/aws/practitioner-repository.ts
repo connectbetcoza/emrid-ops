@@ -20,6 +20,7 @@ import { defaultDeps, type DynamoDeps } from "@/lib/data/aws/client";
 import {
   PATIENT_BY_PRACTITIONER_PREFIX,
   PRACTICE_SK,
+  PRACTITIONER_BY_PROFILE_PREFIX,
   PRACTITIONER_SK,
   itemToPractice,
   itemToPractitioner,
@@ -78,6 +79,21 @@ export class DynamoPractitionerRepository implements PractitionerRepository {
         ExpressionAttributeValues: {
           ":pk": practitionerPk(practitionerId),
           ":sk": PATIENT_BY_PRACTITIONER_PREFIX,
+        },
+      }),
+    );
+    return (result.Items ?? []).map(itemToPractitionerAccess);
+  }
+
+  async listAccessForProfile(profileId: string): Promise<PractitionerAccess[]> {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": profilePk(profileId),
+          ":sk": PRACTITIONER_BY_PROFILE_PREFIX,
         },
       }),
     );

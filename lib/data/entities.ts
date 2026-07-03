@@ -320,3 +320,20 @@ export type ProtectedLivesAggregate = {
   /** Monotonic write counter — diagnostics / optimistic-concurrency hook. */
   version: number;
 };
+
+/**
+ * Internal staff note (`PROFILE#<subjectId> / OPSNOTE#<createdAt>#<noteId>`) —
+ * Ops-owned, like the work index/aggregate/directory (NOT mirrored from the
+ * Patient Platform; patients never see notes). Append-only in spirit: notes
+ * are added and listed, never edited — corrections are new notes.
+ */
+export type OpsNote = {
+  noteId: string;
+  /** The customer (or future record subject) the note is about. */
+  subjectId: string;
+  /** The staff author (Cognito sub) — attribution without an audit event. */
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: ISODateString;
+};

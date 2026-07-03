@@ -36,6 +36,20 @@ export function countActiveWork(items: WorkItem[], customerId: string): number {
 }
 
 /**
+ * Customer Workspace — completed/cancelled work for one customer, newest
+ * first. The support "escalation history": what was raised and how it ended,
+ * projected from the same items as everything else.
+ */
+export function workHistory(items: WorkItem[], customerId: string): WorkItem[] {
+  return items
+    .filter((w) => w.customerId === customerId && !isActiveWork(w))
+    .slice()
+    .sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+}
+
+/**
  * A queue — the projection of work items in one domain. Identity Verification
  * is `queueForDomain(items, "IDENTITY")`. Returns all statuses (the Queue UI
  * filters); ordered by urgency.

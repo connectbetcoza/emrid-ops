@@ -32,6 +32,13 @@ export class MockPractitionerRepository implements PractitionerRepository {
     }));
   }
 
+  async listAccessForProfile(profileId: string): Promise<PractitionerAccess[]> {
+    return [...mockStore.practitionerAccess.values()]
+      .flat()
+      .filter((a) => a.profileId === profileId)
+      .map((a) => ({ ...a }));
+  }
+
   async createPractice(input: CreatePracticeInput): Promise<Practice> {
     const existing = mockStore.practices.get(input.practiceId);
     if (existing) return { ...existing }; // idempotent on id

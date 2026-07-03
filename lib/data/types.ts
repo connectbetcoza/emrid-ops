@@ -12,6 +12,7 @@ import type {
   IdentityRecord,
   IdentityVerificationStatus,
   NewAuditEvent,
+  OpsNote,
   Profile,
   ProtectedLivesAggregate,
 } from "@/lib/data/entities";
@@ -164,6 +165,12 @@ export interface PractitionerRepository {
   getPractice(practiceId: string): Promise<Practice | null>;
   /** The practitioner's patient grants (Query, no scan). Read-only for Ops. */
   listPatientAccess(practitionerId: string): Promise<PractitionerAccess[]>;
+  /**
+   * The inverse read: a customer's practitioner grants (the `PROFILE#<id>` /
+   * `PRACTITIONER#<practitionerId>` items — Query, no scan). Read-only for
+   * Ops; patients own granting.
+   */
+  listAccessForProfile(profileId: string): Promise<PractitionerAccess[]>;
   /** Internal onboarding: create the practice record (idempotent on id). */
   createPractice(input: CreatePracticeInput): Promise<Practice>;
   /** Internal onboarding: create the practitioner record (idempotent on id). */
@@ -256,4 +263,16 @@ export interface WorkItemRepository {
     current: WorkItemRecord,
     input: WorkTransitionInput,
   ): Promise<WorkItemRecord>;
+}
+
+/**
+ * Internal staff notes — Ops-owned items in the subject's PROFILE# partition
+ * (like the work index; never mirrored, never patient-visible). Notes are
+ * added and listed newest-first; there is no edit or delete path (corrections
+ * are new notes) — the same append-only spirit as the audit trail.
+ */
+export interface NoteRepository {
+  add(note: OpsNote): Promise<OpsNote>;
+  /** Newest first. Single-partition Query — no scan. */
+  listForSubject(subjectId: string): Promise<OpsNote[]>;
 }

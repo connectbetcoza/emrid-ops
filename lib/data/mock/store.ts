@@ -11,6 +11,7 @@ import type {
   IdentityVerificationStatus,
   Profile,
   ProtectedLivesAggregate,
+  OpsNote,
 } from "@/lib/data/entities";
 import type { WorkItemRecord } from "@/lib/data/work-record";
 import type { WorkItem } from "@/lib/work/types";
@@ -43,6 +44,8 @@ export type MockStore = {
   practices: Map<string, Practice>;
   /** Patient grants keyed by practitionerId (read-only for Ops). */
   practitionerAccess: Map<string, PractitionerAccess[]>;
+  /** Internal staff notes keyed by subjectId (Ops-owned; newest first). */
+  notes: Map<string, OpsNote[]>;
 };
 
 /** A pending practitioner application (mirrors the Patient portal's write). */
@@ -216,6 +219,7 @@ function freshStore(): MockStore {
     practitioners: new Map([[SEED_PRACTITIONER.practitionerId, { ...SEED_PRACTITIONER }]]),
     practices: new Map([[SEED_PRACTICE.practiceId, { ...SEED_PRACTICE }]]),
     practitionerAccess: new Map(),
+    notes: new Map(),
   };
 
   // The pending application's APPROVE_PRACTITIONER work item (the producer
@@ -302,4 +306,5 @@ export function resetStore(): void {
   mockStore.practitioners = fresh.practitioners;
   mockStore.practices = fresh.practices;
   mockStore.practitionerAccess = fresh.practitionerAccess;
+  mockStore.notes = fresh.notes;
 }
