@@ -215,6 +215,7 @@ describe("producer keeps the directory fresh", () => {
           upsertEntry: async (e: DirectoryEntry) => { upserts.push(e); return e; },
           listPractitioners: async () => [],
           upsertPractitionerEntry: async (e: never) => e,
+          removePractitionerEntry: async (_id: string) => {},
         },
       },
       upserts,

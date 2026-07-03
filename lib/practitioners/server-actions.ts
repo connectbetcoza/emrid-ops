@@ -1,10 +1,15 @@
 "use server";
 
 import { requireOpsUser } from "@/lib/auth/server";
-import { getAuditRepository, getPractitionerRepository } from "@/lib/data";
+import {
+  getAuditRepository,
+  getPractitionerRepository,
+  getWorkItemRepository,
+} from "@/lib/data";
 import { newPracticeId, newPractitionerId } from "@/lib/data/ids";
 import { OPS_AUDIT_EVENT } from "@/lib/work/audit";
 import {
+  validateLoginLink,
   validateOnboarding,
   type OnboardingInput,
 } from "@/lib/practitioners/manage-core";
@@ -61,6 +66,55 @@ export async function onboardPractitioner(
     return { ok: true, practitionerId };
   } catch {
     return { ok: false, error: "Couldn't create the practitioner — please try again." };
+  }
+}
+
+/**
+ * Link a Cognito login to an unlinked (`prac_`) account. Re-keys the
+ * practitioner record (and any grants) to the sub — the Patient Platform
+ * resolves the portal session by that id. Refused while the subject has open
+ * work (the work item's subject id would go stale mid-flight).
+ */
+export async function linkPractitionerLogin(
+  currentId: string,
+  cognitoUserId: string,
+): Promise<ManageResult> {
+  const user = await requireOpsUser();
+  const problem = validateLoginLink(currentId, cognitoUserId);
+  if (problem) return { ok: false, error: problem };
+
+  const openWork = (
+    await getWorkItemRepository().listForCustomer(currentId)
+  ).filter((w) => w.status !== "DONE" && w.status !== "CANCELLED");
+  if (openWork.length > 0) {
+    return {
+      ok: false,
+      error: "Resolve this account's open work items before linking a login.",
+    };
+  }
+
+  const sub = cognitoUserId.trim();
+  try {
+    const linked = await getPractitionerRepository().linkPractitionerLogin(
+      currentId,
+      sub,
+    );
+    await getAuditRepository().record({
+      eventType: OPS_AUDIT_EVENT.PRACTITIONER_UPDATED,
+      actorType: "OPS",
+      actorId: user.userId,
+      targetType: "USER",
+      targetId: linked.practitionerId,
+      metadata: { linkedFrom: currentId, fields: ["practitionerId"] },
+    });
+    return { ok: true, practitionerId: linked.practitionerId };
+  } catch (error) {
+    const message =
+      error instanceof Error &&
+      error.message === "A practitioner already exists for that login."
+        ? error.message
+        : "Couldn't link the login — please try again.";
+    return { ok: false, error: message };
   }
 }
 

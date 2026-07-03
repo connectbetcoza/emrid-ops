@@ -12,6 +12,7 @@ import { ActiveWork } from "@/components/customers/ActiveWork";
 import { LinkedPatients } from "@/components/practitioners/LinkedPatients";
 import { ApprovalPanel } from "@/components/practitioners/ApprovalPanel";
 import { AccountForm } from "@/components/practitioners/AccountForm";
+import { LinkLoginForm } from "@/components/practitioners/LinkLoginForm";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Text } from "@/components/ui/Typography";
 import { auditTimeline } from "@/lib/customers/audit-timeline";
@@ -147,12 +148,17 @@ export default async function PractitionerWorkspacePage({
               content: (
                 <div className="space-y-4">
                   {credentialsPending(practitioner.practitionerId) ? (
-                    <p className="rounded-md bg-warning/10 px-3 py-2.5 text-sm text-warning">
-                      Credentials / manual account setup pending — this account
-                      has no linked Cognito login yet. Create the login and
-                      re-onboard with its user id, or link it in a future
-                      credentials step.
-                    </p>
+                    <div className="space-y-3 rounded-md bg-warning/10 px-3 py-2.5">
+                      <p className="text-sm text-warning">
+                        Credentials / manual account setup pending — this
+                        account has no linked Cognito login yet. Create the
+                        login (the practitioner can self-register on the
+                        patient platform), then link its user id here.
+                      </p>
+                      <LinkLoginForm
+                        practitionerId={practitioner.practitionerId}
+                      />
+                    </div>
                   ) : null}
                   <AccountForm practitioner={practitioner} practice={practice} />
                 </div>

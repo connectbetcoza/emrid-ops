@@ -35,6 +35,28 @@ export function credentialsPending(practitionerId: string): boolean {
   return practitionerId.startsWith("prac_");
 }
 
+/**
+ * Linking a login re-keys the practitioner record to the Cognito sub (the
+ * record id IS the login join key on the Patient Platform). Only unlinked
+ * (`prac_`) records may be re-keyed, and only to a real sub — never to another
+ * generated id, and never to itself.
+ * Returns a user-facing problem, or null when the link is acceptable.
+ */
+export function validateLoginLink(
+  currentId: string,
+  cognitoUserId: string,
+): string | null {
+  const sub = cognitoUserId.trim();
+  if (!credentialsPending(currentId)) {
+    return "This account already has a linked login.";
+  }
+  if (!sub) return "The Cognito user id (sub) is required.";
+  if (credentialsPending(sub)) {
+    return "That looks like a generated id — enter the Cognito user id (sub).";
+  }
+  return null;
+}
+
 /** Case-insensitive search over name, email, practice, and id. */
 export function searchPractitioners(
   entries: PractitionerDirectoryEntry[],

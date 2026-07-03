@@ -98,6 +98,34 @@ export class MockPractitionerRepository implements PractitionerRepository {
     return { ...updated };
   }
 
+  async linkPractitionerLogin(
+    currentId: string,
+    cognitoUserId: string,
+  ): Promise<Practitioner> {
+    const existing = mockStore.practitioners.get(currentId);
+    if (!existing) throw new Error(`Practitioner not found: ${currentId}`);
+    if (mockStore.practitioners.get(cognitoUserId)) {
+      throw new Error("A practitioner already exists for that login.");
+    }
+    const linked: Practitioner = {
+      ...existing,
+      practitionerId: cognitoUserId,
+      userId: cognitoUserId,
+      updatedAt: nowIso(),
+    };
+    mockStore.practitioners.set(cognitoUserId, linked);
+    mockStore.practitioners.delete(currentId);
+    const grants = mockStore.practitionerAccess.get(currentId);
+    if (grants) {
+      mockStore.practitionerAccess.set(
+        cognitoUserId,
+        grants.map((g) => ({ ...g, practitionerId: cognitoUserId })),
+      );
+      mockStore.practitionerAccess.delete(currentId);
+    }
+    return { ...linked };
+  }
+
   async setApprovalDecision(
     practitionerId: string,
     input: PractitionerDecisionInput,

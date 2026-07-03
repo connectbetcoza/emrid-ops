@@ -457,6 +457,35 @@ export function itemToPractitionerDirectoryEntry(
 }
 
 export const PATIENT_BY_PRACTITIONER_PREFIX = "PATIENT#"; // SK prefix in PRACTITIONER# partition
+export const PRACTITIONER_BY_PROFILE_PREFIX = "PRACTITIONER#"; // SK prefix in PROFILE# partition
+
+export const patientSkByPractitioner = (profileId: string): string =>
+  `${PATIENT_BY_PRACTITIONER_PREFIX}${profileId}`;
+export const practitionerSkByProfile = (practitionerId: string): string =>
+  `${PRACTITIONER_BY_PROFILE_PREFIX}${practitionerId}`;
+
+/**
+ * The two grant items (by-practitioner + by-profile) for one access grant —
+ * byte-compatible with the Patient Platform's builder (used only to migrate
+ * grants when a login is linked; grants themselves stay patient-owned).
+ */
+export function practitionerAccessItems(
+  access: PractitionerAccess,
+): [Record<string, unknown>, Record<string, unknown>] {
+  const body = { type: "PRACTITIONER_ACCESS", ...access };
+  return [
+    {
+      PK: practitionerPk(access.practitionerId),
+      SK: patientSkByPractitioner(access.profileId),
+      ...body,
+    },
+    {
+      PK: profilePk(access.profileId),
+      SK: practitionerSkByProfile(access.practitionerId),
+      ...body,
+    },
+  ];
+}
 
 export function itemToPractitionerAccess(
   item: Record<string, unknown>,

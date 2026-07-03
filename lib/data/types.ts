@@ -182,6 +182,16 @@ export interface PractitionerRepository {
     practitionerId: string,
     input: PractitionerDecisionInput,
   ): Promise<Practitioner>;
+  /**
+   * Link a Cognito login to an unlinked (`prac_`) account by re-keying the
+   * practitioner record — and every access-grant pair — to the sub, atomically.
+   * The record id IS the login join key on the Patient Platform, so this is
+   * the one sanctioned identity rewrite. Fails when the target id is taken.
+   */
+  linkPractitionerLogin(
+    currentId: string,
+    cognitoUserId: string,
+  ): Promise<Practitioner>;
 }
 
 /**
@@ -197,6 +207,13 @@ export interface DirectoryRepository {
   upsertPractitionerEntry(
     entry: PractitionerDirectoryEntry,
   ): Promise<PractitionerDirectoryEntry>;
+  /**
+   * Remove a practitioner's roster entry. Recompute-from-truth includes
+   * absence: when the source record is gone (re-keyed to a new login id),
+   * its old entry must not linger. Idempotent — removing a missing entry
+   * is a no-op, so stream replays are harmless.
+   */
+  removePractitionerEntry(practitionerId: string): Promise<void>;
 }
 
 /** A signed change to the maintained Protected-Lives counters. */

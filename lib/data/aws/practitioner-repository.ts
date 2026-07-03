@@ -1,5 +1,12 @@
 import "server-only";
-import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  TransactWriteCommand,
+  type TransactWriteCommandInput,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import type { Practice, Practitioner, PractitionerAccess } from "@/lib/data/entities";
 import type {
   CreatePracticeInput,
@@ -17,8 +24,12 @@ import {
   itemToPractice,
   itemToPractitioner,
   itemToPractitionerAccess,
+  patientSkByPractitioner,
   practicePk,
+  practitionerAccessItems,
   practitionerPk,
+  practitionerSkByProfile,
+  profilePk,
 } from "@/lib/data/aws/keys";
 import { nowIso } from "@/lib/data/ids";
 
@@ -191,6 +202,88 @@ export class DynamoPractitionerRepository implements PractitionerRepository {
       }),
     );
     return itemToPractice(result.Attributes ?? {});
+  }
+
+  /**
+   * Re-key the practitioner record — and every access-grant pair — to the
+   * Cognito sub in ONE TransactWriteItems, so the login join key and the
+   * grants can never diverge. The new-id Put is conditional
+   * (`attribute_not_exists`) as the atomic backstop against id collisions.
+   */
+  async linkPractitionerLogin(
+    currentId: string,
+    cognitoUserId: string,
+  ): Promise<Practitioner> {
+    const { doc, table } = this.deps();
+    const existing = await this.getPractitioner(currentId);
+    if (!existing) throw new Error(`Practitioner not found: ${currentId}`);
+    const taken = await this.getPractitioner(cognitoUserId);
+    if (taken) throw new Error("A practitioner already exists for that login.");
+
+    const grants = await this.listPatientAccess(currentId);
+    // 2 practitioner ops + 4 per grant must fit one transaction (100 items).
+    if (grants.length > 24) {
+      throw new Error(
+        "Too many linked patients to migrate in one step — escalate to engineering.",
+      );
+    }
+
+    const linked: Practitioner = {
+      ...existing,
+      practitionerId: cognitoUserId,
+      userId: cognitoUserId,
+      updatedAt: nowIso(),
+    };
+    const transactItems: NonNullable<
+      TransactWriteCommandInput["TransactItems"]
+    > = [
+      {
+        Put: {
+          TableName: table,
+          Item: {
+            PK: practitionerPk(linked.practitionerId),
+            SK: PRACTITIONER_SK,
+            type: "PRACTITIONER",
+            ...linked,
+          },
+          ConditionExpression: "attribute_not_exists(PK)",
+        },
+      },
+      {
+        Delete: {
+          TableName: table,
+          Key: { PK: practitionerPk(currentId), SK: PRACTITIONER_SK },
+        },
+      },
+    ];
+    for (const grant of grants) {
+      const moved = { ...grant, practitionerId: cognitoUserId };
+      const [byPractitioner, byProfile] = practitionerAccessItems(moved);
+      transactItems.push(
+        { Put: { TableName: table, Item: byPractitioner } },
+        { Put: { TableName: table, Item: byProfile } },
+        {
+          Delete: {
+            TableName: table,
+            Key: {
+              PK: practitionerPk(currentId),
+              SK: patientSkByPractitioner(grant.profileId),
+            },
+          },
+        },
+        {
+          Delete: {
+            TableName: table,
+            Key: {
+              PK: profilePk(grant.profileId),
+              SK: practitionerSkByProfile(currentId),
+            },
+          },
+        },
+      );
+    }
+    await doc.send(new TransactWriteCommand({ TransactItems: transactItems }));
+    return linked;
   }
 
   async setApprovalDecision(

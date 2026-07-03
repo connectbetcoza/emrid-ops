@@ -11,6 +11,9 @@ import {
   auditPk,
   auditSk,
   auditProfileGsiPk,
+  patientSkByPractitioner,
+  practitionerAccessItems,
+  practitionerSkByProfile,
   profileItem,
   itemToProfile,
   emergencyItem,
@@ -52,6 +55,28 @@ describe("shared single-table key contract", () => {
       "TS#2026-06-30T00:00:00.000Z#e1",
     );
     expect(auditProfileGsiPk("p1")).toBe("PROFILE#p1");
+  });
+
+  it("pins the practitioner access-grant pair (written on login link)", () => {
+    expect(patientSkByPractitioner("p1")).toBe("PATIENT#p1");
+    expect(practitionerSkByProfile("x1")).toBe("PRACTITIONER#x1");
+    const [byPractitioner, byProfile] = practitionerAccessItems({
+      accessId: "a1",
+      practitionerId: "x1",
+      profileId: "p1",
+      grantedAt: "2026-07-03T00:00:00.000Z",
+      status: "ACTIVE",
+    });
+    expect(byPractitioner).toMatchObject({
+      PK: "PRACTITIONER#x1",
+      SK: "PATIENT#p1",
+      type: "PRACTITIONER_ACCESS",
+    });
+    expect(byProfile).toMatchObject({
+      PK: "PROFILE#p1",
+      SK: "PRACTITIONER#x1",
+      type: "PRACTITIONER_ACCESS",
+    });
   });
 
   it("pins the Ops-owned aggregate key", () => {

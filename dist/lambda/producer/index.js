@@ -20309,11 +20309,11 @@ var WORK_TYPE_META = {
     nextAction: "Capture next-of-kin contact"
   },
   APPROVE_PRACTITIONER: {
-    label: "Approve practitioner",
+    label: "Activate practitioner",
     domain: "PRACTITIONER",
     icon: import_lucide_react.Stethoscope,
     defaultPriority: "MEDIUM",
-    nextAction: "Check registration and approve"
+    nextAction: "Verify registration and activate"
   },
   RESOLVE_SUPPORT_QUERY: {
     label: "Resolve support query",
@@ -20638,6 +20638,24 @@ function itemToPractitionerDirectoryEntry(item) {
   };
 }
 var PATIENT_BY_PRACTITIONER_PREFIX = "PATIENT#";
+var PRACTITIONER_BY_PROFILE_PREFIX = "PRACTITIONER#";
+var patientSkByPractitioner = (profileId) => `${PATIENT_BY_PRACTITIONER_PREFIX}${profileId}`;
+var practitionerSkByProfile = (practitionerId) => `${PRACTITIONER_BY_PROFILE_PREFIX}${practitionerId}`;
+function practitionerAccessItems(access) {
+  const body = { type: "PRACTITIONER_ACCESS", ...access };
+  return [
+    {
+      PK: practitionerPk(access.practitionerId),
+      SK: patientSkByPractitioner(access.profileId),
+      ...body
+    },
+    {
+      PK: profilePk(access.profileId),
+      SK: practitionerSkByProfile(access.practitionerId),
+      ...body
+    }
+  ];
+}
 function itemToPractitionerAccess(item) {
   return {
     accessId: String(item.accessId),
@@ -20957,7 +20975,9 @@ var OPS_AUDIT_EVENT = {
   CARD_ACTIVATED: "CARD_ACTIVATED",
   WORK_TRANSITION: "OPS_WORK_TRANSITION",
   PRACTITIONER_APPROVED: "PRACTITIONER_APPROVED",
-  PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED"
+  PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED",
+  PRACTITIONER_ONBOARDED: "PRACTITIONER_ONBOARDED",
+  PRACTITIONER_UPDATED: "PRACTITIONER_UPDATED"
 };
 
 // lib/data/ids.ts
@@ -21035,7 +21055,10 @@ async function refreshDirectoryEntry(deps, profileId, now) {
 }
 async function refreshPractitionerDirectoryEntry(deps, practitionerId, now) {
   const practitioner = await deps.practitionerRepo.getPractitioner(practitionerId);
-  if (!practitioner) return false;
+  if (!practitioner) {
+    await deps.directoryRepo.removePractitionerEntry(practitionerId);
+    return false;
+  }
   const practice = await deps.practitionerRepo.getPractice(practitioner.practiceId);
   await deps.directoryRepo.upsertPractitionerEntry({
     practitionerId: practitioner.practitionerId,
@@ -21527,9 +21550,9 @@ function freshStore() {
     step: 0,
     assignment: { assigneeName: null },
     source: "SYSTEM",
-    title: "Approve practitioner",
+    title: "Activate practitioner",
     subjectName: "Dr. Johan Botha",
-    nextAction: "Check registration and approve",
+    nextAction: "Verify registration and activate",
     dueAt: "2026-06-29T09:00:00.000Z",
     createdAt: "2026-06-26T09:00:00.000Z",
     updatedAt: "2026-06-26T09:00:00.000Z"
@@ -21754,6 +21777,11 @@ var MockDirectoryRepository = class {
   async upsertPractitionerEntry(entry) {
     return { ...entry };
   }
+  // Computed-on-read: a re-keyed practitioner already vanishes from the next
+  // read, so removal is interface fidelity only (the producer calls it).
+  async removePractitionerEntry(practitionerId) {
+    void practitionerId;
+  }
 };
 
 // lib/data/mock/practitioner-repository.ts
@@ -21770,6 +21798,84 @@ var MockPractitionerRepository = class {
     return (mockStore.practitionerAccess.get(practitionerId) ?? []).map((a) => ({
       ...a
     }));
+  }
+  async createPractice(input) {
+    const existing = mockStore.practices.get(input.practiceId);
+    if (existing) return { ...existing };
+    const ts = nowIso();
+    const practice = { ...input, status: "ACTIVE", createdAt: ts, updatedAt: ts };
+    mockStore.practices.set(practice.practiceId, practice);
+    return { ...practice };
+  }
+  async createPractitioner(input) {
+    const existing = mockStore.practitioners.get(input.practitionerId);
+    if (existing) return { ...existing };
+    const ts = nowIso();
+    const practitioner = {
+      practitionerId: input.practitionerId,
+      userId: input.practitionerId,
+      practiceId: input.practiceId,
+      fullName: input.fullName,
+      email: input.email,
+      registrationNumber: input.registrationNumber,
+      status: input.status,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    mockStore.practitioners.set(practitioner.practitionerId, practitioner);
+    return { ...practitioner };
+  }
+  async updatePractitionerAccount(practitionerId, input) {
+    const existing = mockStore.practitioners.get(practitionerId);
+    if (!existing) throw new Error(`Practitioner not found: ${practitionerId}`);
+    const updated = {
+      ...existing,
+      ...input.fullName !== void 0 ? { fullName: input.fullName } : {},
+      ...input.email !== void 0 ? { email: input.email } : {},
+      ...input.registrationNumber !== void 0 ? { registrationNumber: input.registrationNumber } : {},
+      ...input.status !== void 0 ? { status: input.status } : {},
+      updatedAt: nowIso()
+    };
+    mockStore.practitioners.set(practitionerId, updated);
+    return { ...updated };
+  }
+  async updatePractice(practiceId, input) {
+    const existing = mockStore.practices.get(practiceId);
+    if (!existing) throw new Error(`Practice not found: ${practiceId}`);
+    const updated = {
+      ...existing,
+      ...input.name !== void 0 ? { name: input.name } : {},
+      ...input.email !== void 0 ? { email: input.email } : {},
+      ...input.phone !== void 0 ? { phone: input.phone } : {},
+      ...input.address !== void 0 ? { address: input.address } : {},
+      updatedAt: nowIso()
+    };
+    mockStore.practices.set(practiceId, updated);
+    return { ...updated };
+  }
+  async linkPractitionerLogin(currentId, cognitoUserId) {
+    const existing = mockStore.practitioners.get(currentId);
+    if (!existing) throw new Error(`Practitioner not found: ${currentId}`);
+    if (mockStore.practitioners.get(cognitoUserId)) {
+      throw new Error("A practitioner already exists for that login.");
+    }
+    const linked = {
+      ...existing,
+      practitionerId: cognitoUserId,
+      userId: cognitoUserId,
+      updatedAt: nowIso()
+    };
+    mockStore.practitioners.set(cognitoUserId, linked);
+    mockStore.practitioners.delete(currentId);
+    const grants = mockStore.practitionerAccess.get(currentId);
+    if (grants) {
+      mockStore.practitionerAccess.set(
+        cognitoUserId,
+        grants.map((g) => ({ ...g, practitionerId: cognitoUserId }))
+      );
+      mockStore.practitionerAccess.delete(currentId);
+    }
+    return { ...linked };
   }
   async setApprovalDecision(practitionerId, input) {
     const existing = mockStore.practitioners.get(practitionerId);
@@ -22358,6 +22464,15 @@ var DynamoDirectoryRepository = class {
     );
     return entry;
   }
+  async removePractitionerEntry(practitionerId) {
+    const { doc, table } = this.deps();
+    await doc.send(
+      new import_lib_dynamodb9.DeleteCommand({
+        TableName: table,
+        Key: { PK: DIRECTORY_PK, SK: directoryPractitionerSk(practitionerId) }
+      })
+    );
+  }
 };
 
 // lib/data/aws/practitioner-repository.ts
@@ -22403,6 +22518,212 @@ var DynamoPractitionerRepository = class {
       })
     );
     return (result.Items ?? []).map(itemToPractitionerAccess);
+  }
+  async createPractice(input) {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const practice = { ...input, status: "ACTIVE", createdAt: ts, updatedAt: ts };
+    try {
+      await doc.send(
+        new import_lib_dynamodb10.PutCommand({
+          TableName: table,
+          Item: {
+            PK: practicePk(practice.practiceId),
+            SK: PRACTICE_SK,
+            type: "PRACTICE",
+            ...practice
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+        const existing = await this.getPractice(practice.practiceId);
+        if (existing) return existing;
+      }
+      throw error;
+    }
+    return practice;
+  }
+  async createPractitioner(input) {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const practitioner = {
+      practitionerId: input.practitionerId,
+      userId: input.practitionerId,
+      practiceId: input.practiceId,
+      fullName: input.fullName,
+      email: input.email,
+      registrationNumber: input.registrationNumber,
+      status: input.status,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    try {
+      await doc.send(
+        new import_lib_dynamodb10.PutCommand({
+          TableName: table,
+          Item: {
+            PK: practitionerPk(practitioner.practitionerId),
+            SK: PRACTITIONER_SK,
+            type: "PRACTITIONER",
+            ...practitioner
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+        const existing = await this.getPractitioner(practitioner.practitionerId);
+        if (existing) return existing;
+      }
+      throw error;
+    }
+    return practitioner;
+  }
+  async updatePractitionerAccount(practitionerId, input) {
+    const { doc, table } = this.deps();
+    const sets = ["updatedAt = :ts"];
+    const values = { ":ts": nowIso() };
+    const names = {};
+    if (input.fullName !== void 0) {
+      sets.push("fullName = :fn");
+      values[":fn"] = input.fullName;
+    }
+    if (input.email !== void 0) {
+      sets.push("email = :em");
+      values[":em"] = input.email;
+    }
+    if (input.registrationNumber !== void 0) {
+      sets.push("registrationNumber = :rn");
+      values[":rn"] = input.registrationNumber;
+    }
+    if (input.status !== void 0) {
+      names["#s"] = "status";
+      sets.push("#s = :st");
+      values[":st"] = input.status;
+    }
+    const result = await doc.send(
+      new import_lib_dynamodb10.UpdateCommand({
+        TableName: table,
+        Key: { PK: practitionerPk(practitionerId), SK: PRACTITIONER_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ...Object.keys(names).length ? { ExpressionAttributeNames: names } : {},
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW"
+      })
+    );
+    return itemToPractitioner(result.Attributes ?? {});
+  }
+  async updatePractice(practiceId, input) {
+    const { doc, table } = this.deps();
+    const sets = ["updatedAt = :ts"];
+    const values = { ":ts": nowIso() };
+    const names = {};
+    if (input.name !== void 0) {
+      names["#n"] = "name";
+      sets.push("#n = :nm");
+      values[":nm"] = input.name;
+    }
+    if (input.email !== void 0) {
+      sets.push("email = :em");
+      values[":em"] = input.email;
+    }
+    if (input.phone !== void 0) {
+      sets.push("phone = :ph");
+      values[":ph"] = input.phone;
+    }
+    if (input.address !== void 0) {
+      names["#a"] = "address";
+      sets.push("#a = :ad");
+      values[":ad"] = input.address;
+    }
+    const result = await doc.send(
+      new import_lib_dynamodb10.UpdateCommand({
+        TableName: table,
+        Key: { PK: practicePk(practiceId), SK: PRACTICE_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ...Object.keys(names).length ? { ExpressionAttributeNames: names } : {},
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW"
+      })
+    );
+    return itemToPractice(result.Attributes ?? {});
+  }
+  /**
+   * Re-key the practitioner record — and every access-grant pair — to the
+   * Cognito sub in ONE TransactWriteItems, so the login join key and the
+   * grants can never diverge. The new-id Put is conditional
+   * (`attribute_not_exists`) as the atomic backstop against id collisions.
+   */
+  async linkPractitionerLogin(currentId, cognitoUserId) {
+    const { doc, table } = this.deps();
+    const existing = await this.getPractitioner(currentId);
+    if (!existing) throw new Error(`Practitioner not found: ${currentId}`);
+    const taken = await this.getPractitioner(cognitoUserId);
+    if (taken) throw new Error("A practitioner already exists for that login.");
+    const grants = await this.listPatientAccess(currentId);
+    if (grants.length > 24) {
+      throw new Error(
+        "Too many linked patients to migrate in one step \u2014 escalate to engineering."
+      );
+    }
+    const linked = {
+      ...existing,
+      practitionerId: cognitoUserId,
+      userId: cognitoUserId,
+      updatedAt: nowIso()
+    };
+    const transactItems = [
+      {
+        Put: {
+          TableName: table,
+          Item: {
+            PK: practitionerPk(linked.practitionerId),
+            SK: PRACTITIONER_SK,
+            type: "PRACTITIONER",
+            ...linked
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      },
+      {
+        Delete: {
+          TableName: table,
+          Key: { PK: practitionerPk(currentId), SK: PRACTITIONER_SK }
+        }
+      }
+    ];
+    for (const grant of grants) {
+      const moved = { ...grant, practitionerId: cognitoUserId };
+      const [byPractitioner, byProfile] = practitionerAccessItems(moved);
+      transactItems.push(
+        { Put: { TableName: table, Item: byPractitioner } },
+        { Put: { TableName: table, Item: byProfile } },
+        {
+          Delete: {
+            TableName: table,
+            Key: {
+              PK: practitionerPk(currentId),
+              SK: patientSkByPractitioner(grant.profileId)
+            }
+          }
+        },
+        {
+          Delete: {
+            TableName: table,
+            Key: {
+              PK: profilePk(grant.profileId),
+              SK: practitionerSkByProfile(currentId)
+            }
+          }
+        }
+      );
+    }
+    await doc.send(new import_lib_dynamodb10.TransactWriteCommand({ TransactItems: transactItems }));
+    return linked;
   }
   async setApprovalDecision(practitionerId, input) {
     const { doc, table } = this.deps();

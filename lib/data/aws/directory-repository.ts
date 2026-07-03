@@ -1,5 +1,10 @@
 import "server-only";
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+} from "@aws-sdk/lib-dynamodb";
 import type {
   DirectoryEntry,
   PractitionerDirectoryEntry,
@@ -11,6 +16,7 @@ import {
   DIRECTORY_PK,
   DIRECTORY_PRACTITIONER_PREFIX_SK,
   directoryItem,
+  directoryPractitionerSk,
   directorySk,
   itemToDirectoryEntry,
   itemToPractitionerDirectoryEntry,
@@ -110,5 +116,17 @@ export class DynamoDirectoryRepository implements DirectoryRepository {
       new PutCommand({ TableName: table, Item: practitionerDirectoryItem(entry) }),
     );
     return entry;
+  }
+
+  async removePractitionerEntry(practitionerId: string): Promise<void> {
+    const { doc, table } = this.deps();
+    // Unconditional delete — removing a missing entry is a no-op, so stream
+    // replays are harmless.
+    await doc.send(
+      new DeleteCommand({
+        TableName: table,
+        Key: { PK: DIRECTORY_PK, SK: directoryPractitionerSk(practitionerId) },
+      }),
+    );
   }
 }

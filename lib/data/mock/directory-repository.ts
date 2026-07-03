@@ -71,4 +71,10 @@ export class MockDirectoryRepository implements DirectoryRepository {
   ): Promise<PractitionerDirectoryEntry> {
     return { ...entry };
   }
+
+  // Computed-on-read: a re-keyed practitioner already vanishes from the next
+  // read, so removal is interface fidelity only (the producer calls it).
+  async removePractitionerEntry(practitionerId: string): Promise<void> {
+    void practitionerId;
+  }
 }

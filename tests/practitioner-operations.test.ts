@@ -391,3 +391,242 @@ describe("management writes (dynamo command shapes)", () => {
     expect(String(upd.input.UpdateExpression)).not.toContain("fullName");
   });
 });
+
+// ── Login linking (the credentials step: re-key `prac_` record → Cognito sub) ─
+
+import { validateLoginLink } from "@/lib/practitioners/manage-core";
+import { DynamoDirectoryRepository } from "@/lib/data/aws/directory-repository";
+
+describe("login link validation (pure)", () => {
+  it("accepts an unlinked record + a real sub", () => {
+    expect(validateLoginLink("prac_1", "9c2f1e0a-sub")).toBeNull();
+  });
+
+  it("rejects already-linked records, blank ids, and generated ids", () => {
+    expect(validateLoginLink("9c2f1e0a-sub", "other-sub")).toMatch(/already/i);
+    expect(validateLoginLink("prac_1", "   ")).toMatch(/required/i);
+    expect(validateLoginLink("prac_1", "prac_2")).toMatch(/generated/i);
+    expect(validateLoginLink("prac_1", "prac_1")).toMatch(/generated/i);
+  });
+});
+
+describe("login linking (mock repo)", () => {
+  it("re-keys the record + grants to the sub; the old id is gone", async () => {
+    const repo = new MockPractitionerRepository();
+    await repo.createPractitioner({
+      practitionerId: "prac_1",
+      practiceId: "prc-1",
+      fullName: "Dr. Michael Edwards",
+      email: "dr@edwardsfp.co.za",
+      status: "APPROVED",
+    });
+    mockStore.practitionerAccess.set("prac_1", [
+      {
+        accessId: "acc-1",
+        practitionerId: "prac_1",
+        profileId: "p-9",
+        grantedAt: NOW,
+        status: "ACTIVE",
+      },
+    ]);
+
+    const linked = await repo.linkPractitionerLogin("prac_1", "sub-123");
+    expect(linked.practitionerId).toBe("sub-123");
+    expect(linked.userId).toBe("sub-123");
+    expect(linked.fullName).toBe("Dr. Michael Edwards");
+    expect(await repo.getPractitioner("prac_1")).toBeNull();
+    expect(await repo.getPractitioner("sub-123")).toMatchObject({
+      status: "APPROVED",
+    });
+    expect(await repo.listPatientAccess("sub-123")).toMatchObject([
+      { practitionerId: "sub-123", profileId: "p-9", status: "ACTIVE" },
+    ]);
+    expect(await repo.listPatientAccess("prac_1")).toEqual([]);
+  });
+
+  it("refuses a taken id and a missing source", async () => {
+    const repo = new MockPractitionerRepository();
+    await repo.createPractitioner({
+      practitionerId: "prac_1",
+      practiceId: "prc-1",
+      fullName: "A",
+      email: "a@b.c",
+      status: "APPROVED",
+    });
+    await repo.createPractitioner({
+      practitionerId: "sub-taken",
+      practiceId: "prc-1",
+      fullName: "B",
+      email: "b@c.d",
+      status: "APPROVED",
+    });
+    await expect(
+      repo.linkPractitionerLogin("prac_1", "sub-taken"),
+    ).rejects.toThrow(/already exists/i);
+    await expect(
+      repo.linkPractitionerLogin("prac_missing", "sub-9"),
+    ).rejects.toThrow(/not found/i);
+  });
+});
+
+describe("login linking (dynamo command shapes)", () => {
+  type Captured = { name: string; input: Record<string, unknown> };
+  function fake(respond: (name: string, nth: number) => unknown): {
+    deps: DynamoDeps;
+    sent: Captured[];
+  } {
+    const sent: Captured[] = [];
+    const deps: DynamoDeps = {
+      table: "emrid-test",
+      doc: {
+        send: (async (c: { constructor: { name: string }; input: Record<string, unknown> }) => {
+          sent.push({ name: c.constructor.name, input: c.input });
+          return respond(c.constructor.name, sent.length - 1);
+        }) as DynamoDeps["doc"]["send"],
+      },
+    };
+    return { deps, sent };
+  }
+
+  const stored = {
+    practitionerId: "prac_1",
+    userId: "prac_1",
+    practiceId: "prc-1",
+    fullName: "Dr. Michael Edwards",
+    email: "dr@edwardsfp.co.za",
+    status: "APPROVED",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+  };
+
+  it("re-keys record + grant pairs in ONE TransactWriteItems (conditional new Put)", async () => {
+    const { deps, sent } = fake((name, nth) => {
+      if (name === "GetCommand") {
+        // 1st get: the source record; 2nd get: the target id (free).
+        return nth === 0 ? { Item: stored } : { Item: undefined };
+      }
+      if (name === "QueryCommand") {
+        return {
+          Items: [
+            {
+              accessId: "acc-1",
+              practitionerId: "prac_1",
+              profileId: "p-9",
+              grantedAt: "2026-06-02T00:00:00.000Z",
+              status: "ACTIVE",
+            },
+          ],
+        };
+      }
+      return {};
+    });
+
+    const linked = await new DynamoPractitionerRepository(deps).linkPractitionerLogin(
+      "prac_1",
+      "sub-123",
+    );
+    expect(linked.practitionerId).toBe("sub-123");
+    expect(linked.createdAt).toBe(stored.createdAt); // history preserved
+
+    const transacts = sent.filter((c) => c.name === "TransactWriteCommand");
+    expect(transacts).toHaveLength(1);
+    const items = transacts[0]!.input.TransactItems as Array<
+      Record<string, { Item?: Record<string, unknown>; Key?: Record<string, unknown>; ConditionExpression?: string }>
+    >;
+    expect(items).toHaveLength(6); // 2 practitioner ops + 4 grant ops
+
+    // New record: conditional create under the sub, identity fields re-keyed.
+    expect(items[0]!.Put!.ConditionExpression).toBe("attribute_not_exists(PK)");
+    expect(items[0]!.Put!.Item).toMatchObject({
+      PK: "PRACTITIONER#sub-123",
+      SK: "PRACTITIONER",
+      practitionerId: "sub-123",
+      userId: "sub-123",
+      createdAt: stored.createdAt,
+    });
+    // Old record deleted.
+    expect(items[1]!.Delete!.Key).toEqual({
+      PK: "PRACTITIONER#prac_1",
+      SK: "PRACTITIONER",
+    });
+    // Grant pair rewritten under the sub (both key directions, Patient shape).
+    expect(items[2]!.Put!.Item).toMatchObject({
+      PK: "PRACTITIONER#sub-123",
+      SK: "PATIENT#p-9",
+      type: "PRACTITIONER_ACCESS",
+      practitionerId: "sub-123",
+    });
+    expect(items[3]!.Put!.Item).toMatchObject({
+      PK: "PROFILE#p-9",
+      SK: "PRACTITIONER#sub-123",
+      type: "PRACTITIONER_ACCESS",
+      practitionerId: "sub-123",
+    });
+    // Old grant pair deleted.
+    expect(items[4]!.Delete!.Key).toEqual({
+      PK: "PRACTITIONER#prac_1",
+      SK: "PATIENT#p-9",
+    });
+    expect(items[5]!.Delete!.Key).toEqual({
+      PK: "PROFILE#p-9",
+      SK: "PRACTITIONER#prac_1",
+    });
+    expect(sent.some((c) => c.name === "ScanCommand")).toBe(false);
+  });
+
+  it("fails closed when the target id is taken", async () => {
+    const { deps } = fake((name, nth) => {
+      if (name === "GetCommand") {
+        return nth === 0
+          ? { Item: stored }
+          : { Item: { ...stored, practitionerId: "sub-123", userId: "sub-123" } };
+      }
+      return {};
+    });
+    await expect(
+      new DynamoPractitionerRepository(deps).linkPractitionerLogin("prac_1", "sub-123"),
+    ).rejects.toThrow(/already exists/i);
+  });
+
+  it("removePractitionerEntry deletes the roster item (no scan)", async () => {
+    const { deps, sent } = fake(() => ({}));
+    await new DynamoDirectoryRepository(deps).removePractitionerEntry("prac_1");
+    expect(sent[0]!.name).toBe("DeleteCommand");
+    expect(sent[0]!.input.Key).toEqual({
+      PK: "DIRECTORY",
+      SK: "PRACTITIONER#prac_1",
+    });
+  });
+});
+
+describe("producer — re-key cleanup (recompute-from-truth includes absence)", () => {
+  it("REMOVE of a practitioner item deletes its stale directory entry", async () => {
+    const d = deps();
+    const removed: string[] = [];
+    d.directoryRepo.removePractitionerEntry = async (id: string) => {
+      removed.push(id);
+    };
+    const removeRecord = {
+      eventName: "REMOVE",
+      dynamodb: {
+        Keys: { PK: { S: "PRACTITIONER#prac_old" }, SK: { S: "PRACTITIONER" } },
+        OldImage: {
+          practitionerId: { S: "prac_old" },
+          userId: { S: "prac_old" },
+          practiceId: { S: "prc-1" },
+          fullName: { S: "Dr. Michael Edwards" },
+          email: { S: "dr@edwardsfp.co.za" },
+          status: { S: "APPROVED" },
+          createdAt: { S: NOW },
+          updatedAt: { S: NOW },
+        },
+      },
+    };
+    await produceFromStreamRecords(d, [removeRecord], NOW);
+    expect(removed).toEqual(["prac_old"]);
+
+    // Replay is harmless (delete of a missing entry is a no-op by contract).
+    await produceFromStreamRecords(d, [removeRecord], NOW);
+    expect(removed).toEqual(["prac_old", "prac_old"]);
+  });
+});

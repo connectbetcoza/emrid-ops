@@ -184,7 +184,13 @@ export async function refreshPractitionerDirectoryEntry(
   now: string,
 ): Promise<boolean> {
   const practitioner = await deps.practitionerRepo.getPractitioner(practitionerId);
-  if (!practitioner) return false;
+  if (!practitioner) {
+    // Recompute-from-truth includes absence: a practitioner record that no
+    // longer exists under this id (re-keyed by a login link) must not linger
+    // in the roster. Idempotent — replays delete a missing entry harmlessly.
+    await deps.directoryRepo.removePractitionerEntry(practitionerId);
+    return false;
+  }
   const practice = await deps.practitionerRepo.getPractice(practitioner.practiceId);
   await deps.directoryRepo.upsertPractitionerEntry({
     practitionerId: practitioner.practitionerId,
