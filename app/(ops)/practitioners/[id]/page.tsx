@@ -150,10 +150,10 @@ export default async function PractitionerWorkspacePage({
                   {credentialsPending(practitioner.practitionerId) ? (
                     <div className="space-y-3 rounded-md bg-warning/10 px-3 py-2.5">
                       <p className="text-sm text-warning">
-                        Credentials / manual account setup pending — this
-                        account has no linked Cognito login yet. Create the
-                        login (the practitioner can self-register on the
-                        patient platform), then link its user id here.
+                        Credentials pending — this account has no linked login
+                        yet. Administration provisions the Cognito login
+                        manually and shares the credentials securely; link its
+                        user id here once created.
                       </p>
                       <LinkLoginForm
                         practitionerId={practitioner.practitionerId}
