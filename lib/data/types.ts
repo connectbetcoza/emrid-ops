@@ -120,16 +120,64 @@ export type PractitionerDecisionInput = {
   decidedByOpsUserId: string;
 };
 
+export type CreatePracticeInput = {
+  practiceId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+};
+
+export type CreatePractitionerInput = {
+  /** V1: equals the Cognito sub when known; else a generated `prac_` id. */
+  practitionerId: string;
+  practiceId: string;
+  fullName: string;
+  email: string;
+  registrationNumber?: string;
+  /** V1 internal onboarding defaults to APPROVED ("Active"). */
+  status: "APPROVED" | "PENDING";
+};
+
+export type UpdatePractitionerAccountInput = {
+  fullName?: string;
+  email?: string;
+  registrationNumber?: string;
+  status?: "APPROVED" | "PENDING" | "SUSPENDED" | "REJECTED";
+};
+
+export type UpdatePracticeInput = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+};
+
 /**
- * Practitioners/practices on the shared table. Ops reads applications and
- * writes ONE thing: the approval decision (status + statusNotes) — the write
- * the practitioner portal reads back (mirror of the identity-decision seam).
+ * Practitioners/practices on the shared table. V1: ADMINISTRATION owns
+ * creation — Ops creates and manages practitioner/practice records (no public
+ * sign-up exists) and writes the review decision for pending accounts. The
+ * practitioner portal reads all of it back.
  */
 export interface PractitionerRepository {
   getPractitioner(practitionerId: string): Promise<Practitioner | null>;
   getPractice(practiceId: string): Promise<Practice | null>;
   /** The practitioner's patient grants (Query, no scan). Read-only for Ops. */
   listPatientAccess(practitionerId: string): Promise<PractitionerAccess[]>;
+  /** Internal onboarding: create the practice record (idempotent on id). */
+  createPractice(input: CreatePracticeInput): Promise<Practice>;
+  /** Internal onboarding: create the practitioner record (idempotent on id). */
+  createPractitioner(input: CreatePractitionerInput): Promise<Practitioner>;
+  /** Manage account particulars (name / email / registration / status). */
+  updatePractitionerAccount(
+    practitionerId: string,
+    input: UpdatePractitionerAccountInput,
+  ): Promise<Practitioner>;
+  /** Manage practice particulars (name / contact details). */
+  updatePractice(
+    practiceId: string,
+    input: UpdatePracticeInput,
+  ): Promise<Practice>;
   setApprovalDecision(
     practitionerId: string,
     input: PractitionerDecisionInput,

@@ -1,9 +1,13 @@
 import "server-only";
-import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { Practice, Practitioner, PractitionerAccess } from "@/lib/data/entities";
 import type {
+  CreatePracticeInput,
+  CreatePractitionerInput,
   PractitionerDecisionInput,
   PractitionerRepository,
+  UpdatePracticeInput,
+  UpdatePractitionerAccountInput,
 } from "@/lib/data/types";
 import { defaultDeps, type DynamoDeps } from "@/lib/data/aws/client";
 import {
@@ -67,6 +71,126 @@ export class DynamoPractitionerRepository implements PractitionerRepository {
       }),
     );
     return (result.Items ?? []).map(itemToPractitionerAccess);
+  }
+
+  async createPractice(input: CreatePracticeInput): Promise<Practice> {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const practice: Practice = { ...input, status: "ACTIVE", createdAt: ts, updatedAt: ts };
+    try {
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: {
+            PK: practicePk(practice.practiceId),
+            SK: PRACTICE_SK,
+            type: "PRACTICE",
+            ...practice,
+          },
+          ConditionExpression: "attribute_not_exists(PK)",
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+        const existing = await this.getPractice(practice.practiceId);
+        if (existing) return existing; // idempotent on id
+      }
+      throw error;
+    }
+    return practice;
+  }
+
+  async createPractitioner(input: CreatePractitionerInput): Promise<Practitioner> {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const practitioner: Practitioner = {
+      practitionerId: input.practitionerId,
+      userId: input.practitionerId,
+      practiceId: input.practiceId,
+      fullName: input.fullName,
+      email: input.email,
+      registrationNumber: input.registrationNumber,
+      status: input.status,
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    try {
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: {
+            PK: practitionerPk(practitioner.practitionerId),
+            SK: PRACTITIONER_SK,
+            type: "PRACTITIONER",
+            ...practitioner,
+          },
+          ConditionExpression: "attribute_not_exists(PK)",
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+        const existing = await this.getPractitioner(practitioner.practitionerId);
+        if (existing) return existing; // idempotent on id
+      }
+      throw error;
+    }
+    return practitioner;
+  }
+
+  async updatePractitionerAccount(
+    practitionerId: string,
+    input: UpdatePractitionerAccountInput,
+  ): Promise<Practitioner> {
+    const { doc, table } = this.deps();
+    const sets: string[] = ["updatedAt = :ts"];
+    const values: Record<string, unknown> = { ":ts": nowIso() };
+    const names: Record<string, string> = {};
+    if (input.fullName !== undefined) { sets.push("fullName = :fn"); values[":fn"] = input.fullName; }
+    if (input.email !== undefined) { sets.push("email = :em"); values[":em"] = input.email; }
+    if (input.registrationNumber !== undefined) {
+      sets.push("registrationNumber = :rn"); values[":rn"] = input.registrationNumber;
+    }
+    if (input.status !== undefined) {
+      names["#s"] = "status"; sets.push("#s = :st"); values[":st"] = input.status;
+    }
+    const result = await doc.send(
+      new UpdateCommand({
+        TableName: table,
+        Key: { PK: practitionerPk(practitionerId), SK: PRACTITIONER_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return itemToPractitioner(result.Attributes ?? {});
+  }
+
+  async updatePractice(
+    practiceId: string,
+    input: UpdatePracticeInput,
+  ): Promise<Practice> {
+    const { doc, table } = this.deps();
+    const sets: string[] = ["updatedAt = :ts"];
+    const values: Record<string, unknown> = { ":ts": nowIso() };
+    const names: Record<string, string> = {};
+    if (input.name !== undefined) { names["#n"] = "name"; sets.push("#n = :nm"); values[":nm"] = input.name; }
+    if (input.email !== undefined) { sets.push("email = :em"); values[":em"] = input.email; }
+    if (input.phone !== undefined) { sets.push("phone = :ph"); values[":ph"] = input.phone; }
+    if (input.address !== undefined) { names["#a"] = "address"; sets.push("#a = :ad"); values[":ad"] = input.address; }
+    const result = await doc.send(
+      new UpdateCommand({
+        TableName: table,
+        Key: { PK: practicePk(practiceId), SK: PRACTICE_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return itemToPractice(result.Attributes ?? {});
   }
 
   async setApprovalDecision(

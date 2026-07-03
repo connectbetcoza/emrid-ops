@@ -43,6 +43,8 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon }> = {
   DOCUMENT_UPLOAD_REQUESTED: { label: "Document added", icon: FileText },
   PRACTITIONER_APPROVED: { label: "Practitioner account activated", icon: Stethoscope },
   PRACTITIONER_REJECTED: { label: "Practitioner activation declined", icon: ShieldX },
+  PRACTITIONER_ONBOARDED: { label: "Practitioner onboarded", icon: Stethoscope },
+  PRACTITIONER_UPDATED: { label: "Account details updated", icon: Pencil },
 };
 
 const ACTOR_LABEL: Record<AuditActorType, string> = {

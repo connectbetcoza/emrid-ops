@@ -27,6 +27,25 @@ const DRY = process.argv.includes("--dry-run");
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 const lambda = new LambdaClient({ region: REGION });
 
+function practitionerTouchEvent(practitionerId, status) {
+  const image = {
+    practitionerId: { S: practitionerId },
+    status: { S: status },
+  };
+  return {
+    Records: [
+      {
+        eventName: "MODIFY",
+        dynamodb: {
+          Keys: { PK: { S: `PRACTITIONER#${practitionerId}` }, SK: { S: "PRACTITIONER" } },
+          OldImage: image,
+          NewImage: image,
+        },
+      },
+    ],
+  };
+}
+
 function touchEvent(profileId, idStatus) {
   const image = {
     profileId: { S: profileId },
@@ -78,6 +97,34 @@ async function main() {
     );
     const failed = res.FunctionError ? ` FUNCTION ERROR: ${res.FunctionError}` : "";
     console.log(`touched: ${id} (${p.firstName} ${p.lastName})${failed}`);
+  }
+  // Practitioners: same recompute-through-the-Lambda idiom.
+  const practitioners = [];
+  ExclusiveStartKey = undefined;
+  do {
+    const page = await doc.send(
+      new ScanCommand({
+        TableName: TABLE,
+        FilterExpression: "SK = :sk",
+        ExpressionAttributeValues: { ":sk": "PRACTITIONER" },
+        ExclusiveStartKey,
+      }),
+    );
+    practitioners.push(...(page.Items ?? []));
+    ExclusiveStartKey = page.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  console.log(`Found ${practitioners.length} practitioners.${DRY ? " (dry-run)" : ""}`);
+  for (const pr of practitioners) {
+    const id = pr.practitionerId;
+    if (DRY) { console.log(`would touch practitioner: ${id} (${pr.fullName})`); continue; }
+    const res = await lambda.send(
+      new InvokeCommand({
+        FunctionName: FN,
+        Payload: Buffer.from(JSON.stringify(practitionerTouchEvent(id, pr.status ?? "APPROVED"))),
+      }),
+    );
+    const failed = res.FunctionError ? ` FUNCTION ERROR: ${res.FunctionError}` : "";
+    console.log(`touched practitioner: ${id} (${pr.fullName})${failed}`);
   }
   console.log("Backfill complete. Verify with a directory Query (PK=DIRECTORY).");
 }

@@ -11,6 +11,7 @@ import { ActionPanel } from "@/components/workspace/ActionPanel";
 import { ActiveWork } from "@/components/customers/ActiveWork";
 import { LinkedPatients } from "@/components/practitioners/LinkedPatients";
 import { ApprovalPanel } from "@/components/practitioners/ApprovalPanel";
+import { AccountForm } from "@/components/practitioners/AccountForm";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Text } from "@/components/ui/Typography";
 import { auditTimeline } from "@/lib/customers/audit-timeline";
@@ -22,6 +23,7 @@ import {
 import { recordToWorkItem } from "@/lib/work/record";
 import { activeWork } from "@/lib/work/projections";
 import { formatDate } from "@/lib/format";
+import { credentialsPending } from "@/lib/practitioners/manage-core";
 import type { PractitionerStatus } from "@/lib/data/entities";
 
 /** Exhaustive practitioner-status display meta (compiler-enforced). */
@@ -136,6 +138,23 @@ export default async function PractitionerWorkspacePage({
                   </Text>
                   <ActiveWork items={work} />
                   <LinkedPatients grants={patientAccess} />
+                </div>
+              ),
+            },
+            {
+              id: "manage",
+              label: "Manage",
+              content: (
+                <div className="space-y-4">
+                  {credentialsPending(practitioner.practitionerId) ? (
+                    <p className="rounded-md bg-warning/10 px-3 py-2.5 text-sm text-warning">
+                      Credentials / manual account setup pending — this account
+                      has no linked Cognito login yet. Create the login and
+                      re-onboard with its user id, or link it in a future
+                      credentials step.
+                    </p>
+                  ) : null}
+                  <AccountForm practitioner={practitioner} practice={practice} />
                 </div>
               ),
             },

@@ -257,3 +257,137 @@ describe("DynamoPractitionerRepository", () => {
     expect(updated.status).toBe("REJECTED");
   });
 });
+
+// ── Practitioner Management v1 (internal onboarding + account updates) ────────
+
+import {
+  credentialsPending,
+  searchPractitioners,
+  validateOnboarding,
+} from "@/lib/practitioners/manage-core";
+
+describe("manage-core (pure)", () => {
+  const valid = {
+    fullName: "Dr Michael Edwards",
+    email: "michael@edwardsfp.co.za",
+    practiceName: "Edwards Family Practice",
+    practiceEmail: "reception@edwardsfp.co.za",
+  };
+
+  it("accepts a valid onboarding input", () => {
+    expect(validateOnboarding(valid)).toBeNull();
+  });
+
+  it("rejects missing name / bad emails", () => {
+    expect(validateOnboarding({ ...valid, fullName: " " })).toMatch(/name/i);
+    expect(validateOnboarding({ ...valid, email: "nope" })).toMatch(/email/i);
+    expect(validateOnboarding({ ...valid, practiceName: "" })).toMatch(/practice name/i);
+    expect(validateOnboarding({ ...valid, practiceEmail: "x" })).toMatch(/practice email/i);
+  });
+
+  it("marks generated ids as credentials-pending; Cognito subs as linked", () => {
+    expect(credentialsPending("prac_1234")).toBe(true);
+    expect(credentialsPending("8f14e45f-ceea-4a7b-9c65-...")).toBe(false);
+  });
+
+  it("searches by name, email, and practice", () => {
+    const entries = [
+      {
+        practitionerId: "p1", fullName: "Dr Michael Edwards",
+        email: "michael@edwardsfp.co.za", practiceId: "prc-1",
+        practiceName: "Edwards Family Practice", status: "APPROVED" as const,
+        registeredAt: "x", updatedAt: "x",
+      },
+      {
+        practitionerId: "p2", fullName: "Dr Johan Botha",
+        email: "johan@rosebankfp.co.za", practiceId: "prc-2",
+        practiceName: "Rosebank Family Practice", status: "PENDING" as const,
+        registeredAt: "x", updatedAt: "x",
+      },
+    ];
+    expect(searchPractitioners(entries, "edwards")).toHaveLength(1);
+    expect(searchPractitioners(entries, "rosebank")[0]?.practitionerId).toBe("p2");
+    expect(searchPractitioners(entries, "")).toHaveLength(2);
+  });
+});
+
+describe("internal onboarding + account management (mock repo)", () => {
+  it("creates practice + ACTIVE practitioner, idempotent on id", async () => {
+    const repo = new MockPractitionerRepository();
+    const practice = await repo.createPractice({
+      practiceId: "prc-me", name: "Edwards Family Practice",
+      email: "reception@edwardsfp.co.za",
+    });
+    const created = await repo.createPractitioner({
+      practitionerId: "prac_me", practiceId: practice.practiceId,
+      fullName: "Dr Michael Edwards", email: "michael@edwardsfp.co.za",
+      status: "APPROVED",
+    });
+    expect(created.status).toBe("APPROVED"); // ACTIVE by default in V1
+    // Idempotent replay returns the existing record.
+    const replay = await repo.createPractitioner({
+      practitionerId: "prac_me", practiceId: practice.practiceId,
+      fullName: "SOMEONE ELSE", email: "x@y.z", status: "PENDING",
+    });
+    expect(replay.fullName).toBe("Dr Michael Edwards");
+  });
+
+  it("updates account particulars + practice details", async () => {
+    const repo = new MockPractitionerRepository();
+    const updated = await repo.updatePractitionerAccount("prac-9001", {
+      registrationNumber: "MP-9999999",
+      status: "SUSPENDED",
+    });
+    expect(updated.registrationNumber).toBe("MP-9999999");
+    expect(updated.status).toBe("SUSPENDED");
+    const practice = await repo.updatePractice("prc-9001", { phone: "+27 11 000 0000" });
+    expect(practice.phone).toBe("+27 11 000 0000");
+  });
+});
+
+describe("management writes (dynamo command shapes)", () => {
+  type Captured = { name: string; input: Record<string, unknown> };
+  function fake(respond: (name: string) => unknown): { deps: DynamoDeps; sent: Captured[] } {
+    const sent: Captured[] = [];
+    const deps: DynamoDeps = {
+      table: "emrid-test",
+      doc: {
+        send: (async (c: { constructor: { name: string }; input: Record<string, unknown> }) => {
+          sent.push({ name: c.constructor.name, input: c.input });
+          return respond(c.constructor.name);
+        }) as DynamoDeps["doc"]["send"],
+      },
+    };
+    return { deps, sent };
+  }
+
+  it("createPractitioner is a conditional Put (attribute_not_exists)", async () => {
+    const { deps, sent } = fake(() => ({}));
+    await new DynamoPractitionerRepository(deps).createPractitioner({
+      practitionerId: "prac_x", practiceId: "prc-x",
+      fullName: "Dr X", email: "x@y.z", status: "APPROVED",
+    });
+    const put = sent.find((c) => c.name === "PutCommand")!;
+    expect(put.input.ConditionExpression).toBe("attribute_not_exists(PK)");
+    const item = put.input.Item as Record<string, unknown>;
+    expect(item.PK).toBe("PRACTITIONER#prac_x");
+    expect(item.status).toBe("APPROVED");
+  });
+
+  it("updatePractitionerAccount only sets provided fields (conditional exists)", async () => {
+    const { deps, sent } = fake(() => ({
+      Attributes: {
+        practitionerId: "p1", userId: "p1", practiceId: "prc-1",
+        fullName: "Dr X", email: "x@y.z", status: "SUSPENDED",
+        createdAt: "t", updatedAt: "t",
+      },
+    }));
+    await new DynamoPractitionerRepository(deps).updatePractitionerAccount("p1", {
+      status: "SUSPENDED",
+    });
+    const upd = sent.find((c) => c.name === "UpdateCommand")!;
+    expect(upd.input.ConditionExpression).toBe("attribute_exists(PK)");
+    expect(String(upd.input.UpdateExpression)).toContain("#s = :st");
+    expect(String(upd.input.UpdateExpression)).not.toContain("fullName");
+  });
+});
