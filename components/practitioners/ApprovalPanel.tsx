@@ -10,9 +10,8 @@ import type { WorkItem } from "@/lib/work/types";
 import type { PractitionerStatus } from "@/lib/data/entities";
 
 /**
- * Practitioner review decision (V1: shown only for ADMIN-CREATED pending
- * records — there is no public application journey) — Approve / Reject with
- * notes, through the
+ * Practitioner account management (V1: Administration owns creation; this
+ * panel activates or declines an admin-created pending account) — through the
  * SAME transition seam as every other work action (`decidePractitioner` →
  * `executeTransition`): the work item completes, the decision persists on the
  * practitioner (status + statusNotes — read back by the practitioner portal),
@@ -45,8 +44,10 @@ export function ApprovalPanel({
             aria-hidden
           />
           {decided
-            ? `Decision recorded: ${status.toLowerCase()}`
-            : `Status: ${status.toLowerCase()} — no review is waiting`}
+            ? status === "APPROVED"
+              ? "Account active"
+              : "Account deactivated"
+            : `Status: ${status.toLowerCase()} — no account work is waiting`}
         </p>
         {statusNotes ? (
           <p className="text-muted-foreground">Notes: {statusNotes}</p>
@@ -58,7 +59,7 @@ export function ApprovalPanel({
   function decide(decision: "APPROVED" | "REJECTED") {
     if (!item) return;
     if (decision === "REJECTED" && !notes.trim()) {
-      error("A rejection needs a reason — add a note first.");
+      error("Declining needs a reason — add a note first.");
       return;
     }
     startTransition(async () => {
@@ -71,8 +72,8 @@ export function ApprovalPanel({
         if (res.ok) {
           success(
             decision === "APPROVED"
-              ? "Practitioner approved"
-              : "Practitioner rejected",
+              ? "Practitioner account activated"
+              : "Activation declined",
           );
           router.refresh();
         } else {
@@ -90,13 +91,13 @@ export function ApprovalPanel({
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         rows={3}
-        placeholder="Decision notes (required for rejection)…"
+        placeholder="Notes (required when declining)…"
         className="w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
       />
       <div className="flex flex-col gap-2">
         <Button size="sm" disabled={pending} onClick={() => decide("APPROVED")}>
           <ShieldCheck className="h-4 w-4" aria-hidden />
-          Approve practitioner
+          Activate account
         </Button>
         <Button
           size="sm"
@@ -105,12 +106,12 @@ export function ApprovalPanel({
           onClick={() => decide("REJECTED")}
         >
           <ShieldX className="h-4 w-4" aria-hidden />
-          Reject practitioner
+          Decline activation
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        The decision is written to the practitioner&apos;s account and shown to
-        them on the practitioner portal. Every decision is audited.
+        The outcome is written to the practitioner&apos;s account and shown to
+        them on the practitioner portal. Every change is audited.
       </p>
     </div>
   );

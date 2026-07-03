@@ -29,10 +29,10 @@ const PRACTITIONER_STATUS_META: Record<
   PractitionerStatus,
   { label: string; tone: BadgeTone }
 > = {
-  PENDING: { label: "Pending approval", tone: "warning" },
-  APPROVED: { label: "Approved", tone: "success" },
+  APPROVED: { label: "Active", tone: "success" },
+  PENDING: { label: "Pending activation", tone: "warning" },
   SUSPENDED: { label: "Suspended", tone: "warning" },
-  REJECTED: { label: "Rejected", tone: "danger" },
+  REJECTED: { label: "Deactivated", tone: "danger" },
 };
 
 export async function generateMetadata({
@@ -108,7 +108,7 @@ export default async function PractitionerWorkspacePage({
           />
         }
         actions={
-          <ActionPanel title="Approval">
+          <ActionPanel title="Account management">
             <ApprovalPanel
               item={approvalItem}
               status={practitioner.status}

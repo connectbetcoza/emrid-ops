@@ -20585,12 +20585,76 @@ function itemToDirectoryEntry(item) {
     updatedAt: String(item.updatedAt)
   };
 }
+var PRACTICE_SK = "PRACTICE";
+var PRACTITIONER_SK = "PRACTITIONER";
+var practicePk = (practiceId) => `PRACTICE#${practiceId}`;
+var practitionerPk = (practitionerId) => `PRACTITIONER#${practitionerId}`;
+function itemToPractice(item) {
+  return {
+    practiceId: String(item.practiceId),
+    name: String(item.name),
+    email: String(item.email),
+    phone: str(item.phone),
+    address: str(item.address),
+    status: item.status,
+    createdAt: String(item.createdAt),
+    updatedAt: String(item.updatedAt)
+  };
+}
+function itemToPractitioner(item) {
+  return {
+    practitionerId: String(item.practitionerId),
+    userId: String(item.userId),
+    practiceId: String(item.practiceId),
+    fullName: String(item.fullName),
+    email: String(item.email),
+    registrationNumber: str(item.registrationNumber),
+    status: item.status,
+    statusNotes: str(item.statusNotes),
+    createdAt: String(item.createdAt),
+    updatedAt: String(item.updatedAt)
+  };
+}
+var DIRECTORY_PRACTITIONER_PREFIX_SK = "PRACTITIONER#";
+var directoryPractitionerSk = (practitionerId) => `${DIRECTORY_PRACTITIONER_PREFIX_SK}${practitionerId}`;
+function practitionerDirectoryItem(entry) {
+  return {
+    PK: DIRECTORY_PK,
+    SK: directoryPractitionerSk(entry.practitionerId),
+    type: "PRACTITIONER_DIRECTORY",
+    ...entry
+  };
+}
+function itemToPractitionerDirectoryEntry(item) {
+  return {
+    practitionerId: String(item.practitionerId),
+    fullName: String(item.fullName),
+    email: String(item.email),
+    practiceId: String(item.practiceId),
+    practiceName: str(item.practiceName),
+    status: item.status,
+    registeredAt: String(item.registeredAt),
+    updatedAt: String(item.updatedAt)
+  };
+}
+var PATIENT_BY_PRACTITIONER_PREFIX = "PATIENT#";
+function itemToPractitionerAccess(item) {
+  return {
+    accessId: String(item.accessId),
+    practitionerId: String(item.practitionerId),
+    profileId: String(item.profileId),
+    grantedAt: String(item.grantedAt),
+    revokedAt: str(item.revokedAt),
+    status: item.status
+  };
+}
 
 // lib/work/producer-core.ts
 var str2 = (v) => typeof v === "string" ? v : void 0;
 var ID_SUFFIX = {
   VERIFY_IDENTITY: "identity",
-  ISSUE_CARD: "card"
+  ISSUE_CARD: "card",
+  APPROVE_PRACTITIONER: "practitioner"
 };
 function producedWorkItemId(intent) {
   return `${intent.customerId}-${ID_SUFFIX[intent.workType]}`;
@@ -20613,6 +20677,19 @@ function workIntentForChange(change) {
     const customerId = str2(img.profileId);
     if (status === "PENDING" && previous !== "PENDING" && customerId) {
       return { workType: "ISSUE_CARD", customerId };
+    }
+    return null;
+  }
+  if (change.keys.SK === PRACTITIONER_SK) {
+    const status = str2(img.status);
+    const previous = str2(change.oldImage?.status);
+    const practitionerId = str2(img.practitionerId);
+    if (status === "PENDING" && previous !== "PENDING" && practitionerId) {
+      return {
+        workType: "APPROVE_PRACTITIONER",
+        customerId: practitionerId,
+        subjectName: str2(img.fullName)
+      };
     }
     return null;
   }
@@ -20651,6 +20728,12 @@ function directoryRefreshTarget(change) {
     return typeof fromMeta === "string" ? fromMeta : null;
   }
   return null;
+}
+function practitionerRefreshTarget(change) {
+  if (change.keys.PK === "DIRECTORY") return null;
+  if (change.keys.SK !== PRACTITIONER_SK) return null;
+  const img = change.newImage ?? change.oldImage;
+  return img && str2(img.practitionerId) || null;
 }
 function buildProducedWorkItem(intent, ctx) {
   const meta = workTypeMeta(intent.workType);
@@ -20872,7 +20955,9 @@ var OPS_AUDIT_EVENT = {
   IDENTITY_VERIFIED: "IDENTITY_VERIFIED",
   IDENTITY_REJECTED: "IDENTITY_REJECTED",
   CARD_ACTIVATED: "CARD_ACTIVATED",
-  WORK_TRANSITION: "OPS_WORK_TRANSITION"
+  WORK_TRANSITION: "OPS_WORK_TRANSITION",
+  PRACTITIONER_APPROVED: "PRACTITIONER_APPROVED",
+  PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED"
 };
 
 // lib/data/ids.ts
@@ -20948,6 +21033,22 @@ async function refreshDirectoryEntry(deps, profileId, now) {
   );
   return true;
 }
+async function refreshPractitionerDirectoryEntry(deps, practitionerId, now) {
+  const practitioner = await deps.practitionerRepo.getPractitioner(practitionerId);
+  if (!practitioner) return false;
+  const practice = await deps.practitionerRepo.getPractice(practitioner.practiceId);
+  await deps.directoryRepo.upsertPractitionerEntry({
+    practitionerId: practitioner.practitionerId,
+    fullName: practitioner.fullName,
+    email: practitioner.email,
+    practiceId: practitioner.practiceId,
+    practiceName: practice?.name,
+    status: practitioner.status,
+    registeredAt: practitioner.createdAt,
+    updatedAt: now
+  });
+  return true;
+}
 async function applyWorkAction(deps, change, now) {
   const completion = cardCompletionForChange(change);
   if (completion) return completeCardWork(deps, completion);
@@ -20958,8 +21059,11 @@ async function applyWorkAction(deps, change, now) {
   if (existing.some((w) => w.workItemId === workItemId)) {
     return { created: false, workItemId, reason: "exists" };
   }
-  const profile = await deps.profileRepo.getProfile(intent.customerId);
-  const subjectName = profile ? `${profile.firstName} ${profile.lastName}`.trim() : intent.customerId;
+  let subjectName = intent.subjectName;
+  if (!subjectName) {
+    const profile = await deps.profileRepo.getProfile(intent.customerId);
+    subjectName = profile ? `${profile.firstName} ${profile.lastName}`.trim() : intent.customerId;
+  }
   const record = buildProducedWorkItem(intent, { subjectName, now });
   await deps.workRepo.create(record);
   return { created: true, workItemId };
@@ -20969,6 +21073,10 @@ async function produceFromChange(deps, change, now = nowIso()) {
   const refreshTarget = directoryRefreshTarget(change);
   if (refreshTarget) {
     await refreshDirectoryEntry(deps, refreshTarget, now);
+  }
+  const practitionerTarget = practitionerRefreshTarget(change);
+  if (practitionerTarget) {
+    await refreshPractitionerDirectoryEntry(deps, practitionerTarget, now);
   }
   return result;
 }
@@ -20983,7 +21091,7 @@ async function produceFromStreamRecords(deps, records, now = nowIso()) {
 }
 
 // lib/data/index.ts
-var import_server_only10 = __toESM(require_server_only_stub());
+var import_server_only11 = __toESM(require_server_only_stub());
 
 // lib/config/index.ts
 function normalize(value) {
@@ -21274,6 +21382,27 @@ var MOCK_CUSTOMERS = [
 ];
 
 // lib/data/mock/store.ts
+var SEED_PRACTICE = {
+  practiceId: "prc-9001",
+  name: "Rosebank Family Practice",
+  email: "reception@rosebankfp.co.za",
+  phone: "+27 11 555 0190",
+  address: "12 Baker St, Rosebank, Johannesburg",
+  status: "ACTIVE",
+  createdAt: "2026-06-20T08:00:00.000Z",
+  updatedAt: "2026-06-20T08:00:00.000Z"
+};
+var SEED_PRACTITIONER = {
+  practitionerId: "prac-9001",
+  userId: "prac-9001",
+  practiceId: "prc-9001",
+  fullName: "Dr. Johan Botha",
+  email: "johan.botha@rosebankfp.co.za",
+  registrationNumber: "MP-0123456",
+  status: "PENDING",
+  createdAt: "2026-06-26T09:00:00.000Z",
+  updatedAt: "2026-06-26T09:00:00.000Z"
+};
 var IDENTITY_STATUS = { UNVERIFIED: "UNVERIFIED", PENDING: "PENDING", VERIFIED: "VERIFIED" };
 function customerToProfile(c) {
   const [firstName, ...rest] = c.fullName.split(" ");
@@ -21383,8 +21512,28 @@ function freshStore() {
     workItems: /* @__PURE__ */ new Map(),
     devices: /* @__PURE__ */ new Map(),
     emergencyProfiles: /* @__PURE__ */ new Map(),
-    protectedLives: seedProtectedLives()
+    protectedLives: seedProtectedLives(),
+    practitioners: /* @__PURE__ */ new Map([[SEED_PRACTITIONER.practitionerId, { ...SEED_PRACTITIONER }]]),
+    practices: /* @__PURE__ */ new Map([[SEED_PRACTICE.practiceId, { ...SEED_PRACTICE }]]),
+    practitionerAccess: /* @__PURE__ */ new Map()
   };
+  store.workItems.set("prac-9001-practitioner", {
+    workItemId: "prac-9001-practitioner",
+    customerId: "prac-9001",
+    workType: "APPROVE_PRACTITIONER",
+    workDomain: "PRACTITIONER",
+    status: "OPEN",
+    priority: "MEDIUM",
+    step: 0,
+    assignment: { assigneeName: null },
+    source: "SYSTEM",
+    title: "Approve practitioner",
+    subjectName: "Dr. Johan Botha",
+    nextAction: "Check registration and approve",
+    dueAt: "2026-06-29T09:00:00.000Z",
+    createdAt: "2026-06-26T09:00:00.000Z",
+    updatedAt: "2026-06-26T09:00:00.000Z"
+  });
   for (const d of seedDevices()) store.devices.set(d.deviceId, d);
   for (const c of MOCK_CUSTOMERS) {
     store.profiles.set(c.id, customerToProfile(c));
@@ -21589,6 +21738,50 @@ var MockDirectoryRepository = class {
   }
   async upsertEntry(entry) {
     return { ...entry };
+  }
+  async listPractitioners() {
+    return [...mockStore.practitioners.values()].map((prac) => ({
+      practitionerId: prac.practitionerId,
+      fullName: prac.fullName,
+      email: prac.email,
+      practiceId: prac.practiceId,
+      practiceName: mockStore.practices.get(prac.practiceId)?.name,
+      status: prac.status,
+      registeredAt: prac.createdAt,
+      updatedAt: prac.updatedAt
+    }));
+  }
+  async upsertPractitionerEntry(entry) {
+    return { ...entry };
+  }
+};
+
+// lib/data/mock/practitioner-repository.ts
+var MockPractitionerRepository = class {
+  async getPractitioner(practitionerId) {
+    const p = mockStore.practitioners.get(practitionerId);
+    return p ? { ...p } : null;
+  }
+  async getPractice(practiceId) {
+    const p = mockStore.practices.get(practiceId);
+    return p ? { ...p } : null;
+  }
+  async listPatientAccess(practitionerId) {
+    return (mockStore.practitionerAccess.get(practitionerId) ?? []).map((a) => ({
+      ...a
+    }));
+  }
+  async setApprovalDecision(practitionerId, input) {
+    const existing = mockStore.practitioners.get(practitionerId);
+    if (!existing) throw new Error(`Practitioner not found: ${practitionerId}`);
+    const updated = {
+      ...existing,
+      status: input.decision,
+      statusNotes: input.notes,
+      updatedAt: nowIso()
+    };
+    mockStore.practitioners.set(practitionerId, updated);
+    return { ...updated };
   }
 };
 
@@ -22101,8 +22294,13 @@ var DynamoDirectoryRepository = class {
       const page = await doc.send(
         new import_lib_dynamodb9.QueryCommand({
           TableName: table,
-          KeyConditionExpression: "PK = :pk",
-          ExpressionAttributeValues: { ":pk": DIRECTORY_PK },
+          // begins_with keeps customer and practitioner entries separate — the
+          // partition holds both kinds.
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": DIRECTORY_PK,
+            ":sk": DIRECTORY_CUSTOMER_PREFIX_SK
+          },
           ExclusiveStartKey
         })
       );
@@ -22130,6 +22328,102 @@ var DynamoDirectoryRepository = class {
     );
     return entry;
   }
+  async listPractitioners() {
+    const { doc, table } = this.deps();
+    const entries = [];
+    let ExclusiveStartKey;
+    do {
+      const page = await doc.send(
+        new import_lib_dynamodb9.QueryCommand({
+          TableName: table,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+          ExpressionAttributeValues: {
+            ":pk": DIRECTORY_PK,
+            ":sk": DIRECTORY_PRACTITIONER_PREFIX_SK
+          },
+          ExclusiveStartKey
+        })
+      );
+      for (const item of page.Items ?? []) {
+        entries.push(itemToPractitionerDirectoryEntry(item));
+      }
+      ExclusiveStartKey = page.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
+    return entries;
+  }
+  async upsertPractitionerEntry(entry) {
+    const { doc, table } = this.deps();
+    await doc.send(
+      new import_lib_dynamodb9.PutCommand({ TableName: table, Item: practitionerDirectoryItem(entry) })
+    );
+    return entry;
+  }
+};
+
+// lib/data/aws/practitioner-repository.ts
+var import_server_only10 = __toESM(require_server_only_stub());
+var import_lib_dynamodb10 = require("@aws-sdk/lib-dynamodb");
+var DynamoPractitionerRepository = class {
+  constructor(injected) {
+    this.injected = injected;
+  }
+  deps() {
+    return this.injected ?? defaultDeps();
+  }
+  async getPractitioner(practitionerId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb10.GetCommand({
+        TableName: table,
+        Key: { PK: practitionerPk(practitionerId), SK: PRACTITIONER_SK }
+      })
+    );
+    return result.Item ? itemToPractitioner(result.Item) : null;
+  }
+  async getPractice(practiceId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb10.GetCommand({
+        TableName: table,
+        Key: { PK: practicePk(practiceId), SK: PRACTICE_SK }
+      })
+    );
+    return result.Item ? itemToPractice(result.Item) : null;
+  }
+  async listPatientAccess(practitionerId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb10.QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": practitionerPk(practitionerId),
+          ":sk": PATIENT_BY_PRACTITIONER_PREFIX
+        }
+      })
+    );
+    return (result.Items ?? []).map(itemToPractitionerAccess);
+  }
+  async setApprovalDecision(practitionerId, input) {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const result = await doc.send(
+      new import_lib_dynamodb10.UpdateCommand({
+        TableName: table,
+        Key: { PK: practitionerPk(practitionerId), SK: PRACTITIONER_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: "SET #s = :status, statusNotes = :notes, updatedAt = :ts",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":status": input.decision,
+          ":notes": input.notes ?? "",
+          ":ts": ts
+        },
+        ReturnValues: "ALL_NEW"
+      })
+    );
+    return itemToPractitioner(result.Attributes ?? {});
+  }
 };
 
 // lib/data/index.ts
@@ -22144,6 +22438,7 @@ var mockDevice = new MockDeviceRepository();
 var mockEmergency = new MockEmergencyProfileRepository();
 var mockAggregate = new MockAggregateRepository();
 var mockDirectory = new MockDirectoryRepository();
+var mockPractitioner = new MockPractitionerRepository();
 var awsProfile = new DynamoProfileRepository();
 var awsDocument = new DynamoDocumentRepository();
 var awsAudit = new DynamoAuditRepository();
@@ -22152,6 +22447,7 @@ var awsDevice = new DynamoDeviceRepository();
 var awsEmergency = new DynamoEmergencyProfileRepository();
 var awsAggregate = new DynamoAggregateRepository();
 var awsDirectory = new DynamoDirectoryRepository();
+var awsPractitioner = new DynamoPractitionerRepository();
 function getProfileRepository() {
   return pickMigrated(mockProfile, awsProfile);
 }
@@ -22173,6 +22469,9 @@ function getAggregateRepository() {
 function getDirectoryRepository() {
   return pickMigrated(mockDirectory, awsDirectory);
 }
+function getPractitionerRepository() {
+  return pickMigrated(mockPractitioner, awsPractitioner);
+}
 
 // lambda/work-item-producer.ts
 async function handler(event) {
@@ -22186,7 +22485,8 @@ async function handler(event) {
       emergencyRepo: getEmergencyProfileRepository(),
       aggregateRepo: getAggregateRepository(),
       auditRepo: getAuditRepository(),
-      directoryRepo: getDirectoryRepository()
+      directoryRepo: getDirectoryRepository(),
+      practitionerRepo: getPractitionerRepository()
     },
     records,
     (/* @__PURE__ */ new Date()).toISOString()

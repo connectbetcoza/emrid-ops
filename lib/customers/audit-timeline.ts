@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BadgeCheck,
+  Stethoscope,
   CreditCard,
   Eye,
   FileText,
@@ -40,6 +41,8 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon }> = {
   PROFILE_CREATED: { label: "Profile created", icon: UserPlus },
   PROFILE_UPDATED: { label: "Profile updated", icon: Pencil },
   DOCUMENT_UPLOAD_REQUESTED: { label: "Document added", icon: FileText },
+  PRACTITIONER_APPROVED: { label: "Practitioner account activated", icon: Stethoscope },
+  PRACTITIONER_REJECTED: { label: "Practitioner activation declined", icon: ShieldX },
 };
 
 const ACTOR_LABEL: Record<AuditActorType, string> = {

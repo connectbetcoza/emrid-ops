@@ -24,7 +24,7 @@ export default function AdministrationPage() {
     <div className="space-y-6">
       <PageHeader
         title="Administration"
-        description="Runtime configuration and the staff role reference. Staff accounts are managed in Cognito."
+        description="Runtime configuration and the staff role reference. Staff accounts are managed in Cognito; practitioner accounts are created here by the EMRID team (V1: internal only)."
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="space-y-3">

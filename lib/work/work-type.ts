@@ -108,11 +108,11 @@ export const WORK_TYPE_META: Record<WorkType, WorkTypeMeta> = {
     nextAction: "Capture next-of-kin contact",
   },
   APPROVE_PRACTITIONER: {
-    label: "Approve practitioner",
+    label: "Activate practitioner",
     domain: "PRACTITIONER",
     icon: Stethoscope,
     defaultPriority: "MEDIUM",
-    nextAction: "Check registration and approve",
+    nextAction: "Verify registration and activate",
   },
   RESOLVE_SUPPORT_QUERY: {
     label: "Resolve support query",

@@ -12,19 +12,24 @@ import type { PractitionerStatus } from "@/lib/data/entities";
 
 export const metadata: Metadata = { title: "Practitioners" };
 
-const STATUS_TONE: Record<PractitionerStatus, BadgeTone> = {
-  PENDING: "warning",
-  APPROVED: "success",
-  SUSPENDED: "warning",
-  REJECTED: "danger",
+/**
+ * Management framing over the SHARED status values (contract unchanged):
+ * ACTIVE is the normal operational state; the rest are exceptions.
+ */
+const STATUS_META: Record<PractitionerStatus, { label: string; tone: BadgeTone }> = {
+  APPROVED: { label: "Active", tone: "success" },
+  PENDING: { label: "Pending activation", tone: "warning" },
+  SUSPENDED: { label: "Suspended", tone: "warning" },
+  REJECTED: { label: "Deactivated", tone: "danger" },
 };
 
 /**
- * Practitioners — the roster of INTERNALLY-CREATED practitioner accounts (V1:
- * no public self-registration; the EMRID team creates accounts and shares
- * credentials manually). The list is the practitioner directory projection;
- * each row opens the Practitioner Workspace. Any open practitioner work
- * (admin-created pending records) projects through the one generic queue below.
+ * Practitioners — the support & management surface for practitioner accounts.
+ * ADMINISTRATION owns creation (V1: internal, credentials shared manually; no
+ * public sign-up exists); this department supports what exists. ACTIVE is the
+ * normal operational state. The roster is the directory projection; each row
+ * opens the Practitioner Workspace; open account work (e.g. a pending
+ * activation) projects through the one generic queue below.
  */
 export default async function PractitionersPage() {
   const [practitioners, records] = await Promise.all([
@@ -37,7 +42,7 @@ export default async function PractitionersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Practitioners"
-        description="Internally-created practitioner accounts and their practices. Accounts are created by the EMRID team in V1 — there is no public sign-up."
+        description="Practitioner accounts and their practices. Administration creates accounts; Practitioner Operations supports and manages them."
       />
 
       <Card className="space-y-3">
@@ -46,7 +51,7 @@ export default async function PractitionersPage() {
           <EmptyState
             icon={Stethoscope}
             title="No practitioners yet"
-            description="Practitioner accounts are created internally by the EMRID team. Created accounts appear here."
+            description="Practitioner accounts are created by Administration. Created accounts appear here for support and management."
           />
         ) : (
           <ul className="divide-y divide-border">
@@ -64,7 +69,7 @@ export default async function PractitionersPage() {
                       {p.practiceName ?? p.practiceId} · {p.email}
                     </span>
                   </span>
-                  <Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>
+                  <Badge tone={STATUS_META[p.status].tone}>{STATUS_META[p.status].label}</Badge>
                 </Link>
               </li>
             ))}

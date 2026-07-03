@@ -60,7 +60,7 @@ const WORK_TYPE_FLOW: Record<WorkType, { steps: Step[]; defer?: Step }> = {
     steps: [{ label: "Mark captured", toStatus: "DONE" }],
   },
   APPROVE_PRACTITIONER: {
-    steps: [{ label: "Approve", toStatus: "DONE" }],
+    steps: [{ label: "Activate account", toStatus: "DONE" }],
     defer: { label: "Request info", toStatus: "WAITING" },
   },
   RESOLVE_SUPPORT_QUERY: {
