@@ -3,15 +3,22 @@ import { ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Typography";
 import { cn } from "@/lib/utils";
-import { runBriefingEngine } from "@/lib/engines/briefing";
+import { briefingPriorities } from "@/lib/engines/briefing";
+import { getWorkItemRepository } from "@/lib/data";
+import { recordToWorkItem } from "@/lib/work/record";
+import { WORK_DOMAINS } from "@/lib/work/work-type";
 
 /**
- * The Morning Brief — the dashboard's greeting widget. Summarises yesterday's
- * throughput and today's priorities. Operational health lives in its own
- * dedicated widget (it is intentionally NOT duplicated here). Mock data only.
+ * The Morning Brief — the dashboard's greeting widget. Today's priorities are
+ * derived from the LIVE work index (the same persisted items every queue
+ * projects); nothing here is fabricated. Rows link into the owning queue.
  */
-export function MorningBrief({ greeting }: { greeting: string }) {
-  const { yesterday, priorities } = runBriefingEngine();
+export async function MorningBrief({ greeting }: { greeting: string }) {
+  const perDomain = await Promise.all(
+    WORK_DOMAINS.map((d) => getWorkItemRepository().listByDomain(d)),
+  );
+  const priorities = briefingPriorities(perDomain.flat().map(recordToWorkItem));
+
   return (
     <Card className="overflow-hidden">
       <div className="space-y-1">
@@ -24,26 +31,14 @@ export function MorningBrief({ greeting }: { greeting: string }) {
         </p>
       </div>
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
-        {/* Yesterday */}
-        <section className="space-y-2.5">
-          <Eyebrow>Yesterday</Eyebrow>
-          <ul className="space-y-1.5">
-            {yesterday.map((stat) => (
-              <li key={stat.label} className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  {stat.value}
-                </span>{" "}
-                {stat.label}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Today's priorities */}
-        <section className="space-y-2.5">
-          <Eyebrow>Today’s priorities</Eyebrow>
-          <ul className="space-y-1">
+      <section className="mt-6 space-y-2.5">
+        <Eyebrow>Today’s priorities</Eyebrow>
+        {priorities.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No open work in any queue — operations are clear.
+          </p>
+        ) : (
+          <ul className="grid gap-1 sm:grid-cols-2">
             {priorities.map((p) => (
               <li key={p.label}>
                 <Link
@@ -76,8 +71,8 @@ export function MorningBrief({ greeting }: { greeting: string }) {
               </li>
             ))}
           </ul>
-        </section>
-      </div>
+        )}
+      </section>
     </Card>
   );
 }

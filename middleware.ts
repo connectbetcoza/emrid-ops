@@ -26,7 +26,9 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Protect everything except Next internals, static assets, and the login
-  // route itself (which must remain reachable while unauthenticated).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login).*)"],
+  // Protect everything except Next internals, static assets, the login route
+  // (must remain reachable while unauthenticated), and the health endpoint
+  // (secret-free booleans by contract; uptime monitors need a 200, not a
+  // redirect). /api/client-error deliberately STAYS behind the cookie gate.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/health).*)"],
 };

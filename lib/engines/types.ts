@@ -1,4 +1,3 @@
-import type { TimelineEvent } from "@/components/workspace/TimelineArea";
 import type { WorkItem } from "@/lib/work/types";
 
 /**
@@ -11,28 +10,11 @@ import type { WorkItem } from "@/lib/work/types";
  * it. Widgets depend on these types, never on the engine's internals.
  */
 
-export type BriefStat = { label: string; value: number };
-
 export type PriorityStat = {
   label: string;
   value: number;
   href: string;
   urgent?: boolean;
-};
-
-export type HealthMetric = {
-  label: string;
-  value: number;
-  tone: "success" | "warning" | "danger";
-};
-
-export type AlertSeverity = "info" | "warning" | "critical";
-
-export type OperationalAlert = {
-  id: string;
-  severity: AlertSeverity;
-  title: string;
-  description: string;
 };
 
 /** The north-star figure: how many lives are actively protected. */
@@ -44,25 +26,5 @@ export type ProtectedLives = {
   direction: "up" | "down" | "flat";
 };
 
-export type BriefingOutput = {
-  yesterday: BriefStat[];
-  priorities: PriorityStat[];
-};
-
-export type HealthOutput = {
-  score: number;
-  metrics: HealthMetric[];
-};
-
 /** A next-best-action suggestion. Stub in Sprint 2; LLM-backed later. */
-export type Recommendation = {
-  id: string;
-  title: string;
-  rationale: string;
-  href?: string;
-};
-
 export type WorkOutput = WorkItem[];
-export type AlertOutput = OperationalAlert[];
-export type ActivityOutput = TimelineEvent[];
-export type RecommendationOutput = Recommendation[];

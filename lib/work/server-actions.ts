@@ -1,6 +1,7 @@
 "use server";
 
 import { requireOpsUser } from "@/lib/auth/server";
+import { reportError } from "@/lib/observability/report";
 import {
   getAggregateRepository,
   getAuditRepository,
@@ -68,6 +69,14 @@ export async function transitionWorkItem(
     },
   );
 
+  if (!result.ok) {
+    // Fail-closed outcomes (unsupported transitions, repo failures) are
+    // operationally significant — surface them to monitoring with ids only.
+    reportError(new Error(result.error), {
+      scope: "action:transitionWorkItem",
+      extra: { workItemId: input.item.id, toStatus: input.toStatus },
+    });
+  }
   return result.ok
     ? { ok: true, persistedDecision: result.persistedDecision }
     : { ok: false, error: result.error };
@@ -122,6 +131,14 @@ export async function decidePractitioner(
     },
   );
 
+  if (!result.ok) {
+    // Fail-closed outcomes (unsupported transitions, repo failures) are
+    // operationally significant — surface them to monitoring with ids only.
+    reportError(new Error(result.error), {
+      scope: "action:decidePractitioner",
+      extra: { workItemId: input.item.id, toStatus: "DONE" },
+    });
+  }
   return result.ok
     ? { ok: true, persistedDecision: result.persistedDecision }
     : { ok: false, error: result.error };

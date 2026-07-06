@@ -4,10 +4,7 @@ import { ProtectedLivesHero } from "@/components/dashboard/ProtectedLivesHero";
 import { MorningBrief } from "@/components/dashboard/MorningBrief";
 import { NeedsAttention } from "@/components/dashboard/NeedsAttention";
 import { TodaysWork } from "@/components/dashboard/TodaysWork";
-import { OperationalHealth } from "@/components/dashboard/OperationalHealth";
 import { ReadinessDistribution } from "@/components/dashboard/ReadinessDistribution";
-import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
 import { requireOpsUser } from "@/lib/auth/server";
 import { firstName } from "@/types";
 import { greeting } from "@/lib/greeting";
@@ -18,8 +15,11 @@ export const metadata: Metadata = { title: "Mission Control" };
  * Mission Control — the operational command centre. Not a reporting dashboard:
  * it answers what needs attention, what to do next, and whether the
  * organisation is becoming more protected. Protected Lives is the focal point;
- * every other surface explains its movement. Each surface is fed by a
- * deterministic engine (mock in Sprint 2).
+ * every other surface explains its movement. Every surface is live
+ * (aggregate/directory/work-index-backed) — hardened for go-live: Mission
+ * Control never fabricates. The health/alerts/activity widgets were removed
+ * with their deterministic-mock engines and return only when real signals
+ * exist to feed them.
  */
 export default async function MissionControlPage() {
   const user = await requireOpsUser();
@@ -41,12 +41,9 @@ export default async function MissionControlPage() {
         <div className="space-y-6 lg:col-span-2">
           <NeedsAttention />
           <TodaysWork />
-          <RecentActivity />
         </div>
         <aside className="space-y-6 lg:col-span-1">
           <ReadinessDistribution />
-          <OperationalHealth />
-          <OperationalAlerts />
         </aside>
       </div>
     </div>

@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { reportClientError } from "@/lib/observability/client";
 
 /**
  * Error boundary for the operations shell. Renders a calm, recoverable state
- * with a retry rather than a crashed page. In production this is also where
- * monitoring would be notified (console-only for now).
+ * with a retry rather than a crashed page, and beacons the error (digest +
+ * message, no PII) to /api/client-error → the server reporting seam →
+ * CloudWatch.
  */
 export default function OpsError({
   error,
@@ -17,10 +20,10 @@ export default function OpsError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
   useEffect(() => {
-    // Placeholder for real monitoring (Sentry/CloudWatch) in a later sprint.
-    console.error("[emrid-ops] route error", error);
-  }, [error]);
+    reportClientError(error, pathname ?? "");
+  }, [error, pathname]);
 
   return (
     <div className="mx-auto max-w-lg py-12">

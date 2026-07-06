@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, UserPlus } from "lucide-react";
+import { Check } from "lucide-react";
 import { Queue, type QueueBulkAction } from "@/components/queue/Queue";
 import { QueueCard } from "@/components/queue/QueueCard";
 import { useToast } from "@/components/feedback/ToastProvider";
@@ -38,7 +38,7 @@ export function WorkQueue({
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
-  const { toast, success, error } = useToast();
+  const { success, error } = useToast();
   const router = useRouter();
   const byId = new Map(items.map((i) => [i.id, i] as const));
   const assignees = Array.from(
@@ -85,13 +85,11 @@ export function WorkQueue({
     if (done > 0) router.refresh();
   }
 
+  // The mock "Assign to me" action was removed in the go-live hardening
+  // sprint (operational truth over theatre): assignment ships as real
+  // persistence in Slice E, and until then the queue offers no action that
+  // pretends to work. Only the REAL primary transition remains.
   const bulkActions: QueueBulkAction[] = [
-    {
-      id: "assign",
-      label: "Assign to me",
-      icon: UserPlus,
-      onRun: (ids) => toast(`Assigned ${ids.length} item(s) to you (mock)`, "mock"),
-    },
     ...(primaryBulkLabel
       ? [
           {

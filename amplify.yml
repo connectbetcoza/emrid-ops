@@ -28,3 +28,21 @@ frontend:
     paths:
       - node_modules/**/*
       - .next/cache/**/*
+
+# Security headers applied at the edge — byte-matched to the Patient Platform's
+# amplify.yml (GH-2 parity: both apps expose the same headers). A tested
+# Content-Security-Policy is intentionally deferred on BOTH apps until verified
+# against inline styles/scripts — tracked in the Go-Live Risk Register.
+customHeaders:
+  - pattern: "**"
+    headers:
+      - key: "Strict-Transport-Security"
+        value: "max-age=31536000; includeSubDomains"
+      - key: "X-Content-Type-Options"
+        value: "nosniff"
+      - key: "X-Frame-Options"
+        value: "DENY"
+      - key: "Referrer-Policy"
+        value: "strict-origin-when-cross-origin"
+      - key: "Permissions-Policy"
+        value: "camera=(), microphone=(), geolocation=()"

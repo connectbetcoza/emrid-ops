@@ -17,6 +17,7 @@ import {
 } from "@/lib/auth/login-core";
 import { isAuthorizedOpsUser, opsUserFromIdToken } from "@/lib/auth/session";
 import { verifyIdToken } from "@/lib/auth/verifier";
+import { reportError } from "@/lib/observability/report";
 
 /**
  * Auth server actions for EMRID Operations staff — the single server-side entry
@@ -71,6 +72,12 @@ export async function signIn(
     await writeSessionCookies(tokens);
   } catch (error) {
     const code = error instanceof CognitoError ? error.code : "UnknownError";
+    // Expected auth outcomes (wrong password, unconfirmed, throttled) are not
+    // faults; only genuinely unknown failures reach the reporting seam. The
+    // report carries the code only — never the email or password.
+    if (code === "UnknownError" || code === "ConfigError") {
+      reportError(error, { scope: "action:signIn", extra: { code } });
+    }
     return { error: signInErrorMessage(code) };
   }
 

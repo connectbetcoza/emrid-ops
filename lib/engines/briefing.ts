@@ -1,31 +1,33 @@
-import type { BriefingOutput } from "@/lib/engines/types";
+import type { PriorityStat } from "@/lib/engines/types";
+import type { WorkItem } from "@/lib/work/types";
+import { isActiveWork } from "@/lib/work/types";
+import {
+  WORK_DOMAINS,
+  WORK_DOMAIN_HREF,
+  WORK_DOMAIN_LABEL,
+} from "@/lib/work/work-type";
 
 /**
- * Briefing Engine — produces the Morning Brief: yesterday's throughput and
- * today's priorities. Deterministic mock in Sprint 2; LLM-swappable later
- * (e.g. a natural-language brief) behind the same output contract.
+ * Briefing Engine — today's priorities, derived from the LIVE work index (the
+ * same items every queue projects). One row per domain with open work, urgent
+ * when any item in the domain is URGENT. The previous deterministic-mock body
+ * (fabricated throughput figures) was removed in the go-live hardening sprint:
+ * Mission Control never fabricates. "Yesterday's throughput" needs a
+ * time-indexed access pattern that doesn't exist yet, so it is omitted rather
+ * than invented.
  */
-export function runBriefingEngine(): BriefingOutput {
-  return {
-    yesterday: [
-      { label: "customers registered", value: 18 },
-      { label: "identities verified", value: 14 },
-      { label: "cards activated", value: 9 },
-    ],
-    priorities: [
+export function briefingPriorities(items: WorkItem[]): PriorityStat[] {
+  const active = items.filter(isActiveWork);
+  return WORK_DOMAINS.flatMap((domain) => {
+    const inDomain = active.filter((w) => w.domain === domain);
+    if (inDomain.length === 0) return [];
+    return [
       {
-        label: "identities awaiting review",
-        value: 6,
-        href: "/identity-verification",
+        label: `open in ${WORK_DOMAIN_LABEL[domain]}`,
+        value: inDomain.length,
+        href: WORK_DOMAIN_HREF[domain],
+        urgent: inDomain.some((w) => w.priority === "URGENT"),
       },
-      { label: "cards to encode", value: 4, href: "/card-fulfilment" },
-      { label: "practitioner approvals", value: 2, href: "/practitioners" },
-      {
-        label: "customer currently unprotected",
-        value: 1,
-        href: "/customer-readiness",
-        urgent: true,
-      },
-    ],
-  };
+    ];
+  });
 }

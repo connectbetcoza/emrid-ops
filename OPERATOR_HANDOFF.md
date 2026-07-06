@@ -145,3 +145,31 @@ Operations lists real customers from a **producer-maintained directory projectio
 3. No Cognito group is needed for the practitioner portal — portal access is resolved purely by the practitioner record at `PRACTITIONER#<sub>`. Groups remain an Ops-staff concept.
 
 **Practitioner Operating Model (authoritative, CPTO-confirmed 2026-07-03):** Sales → commercial agreement → **Administration** creates the practitioner account + practice internally, provisions Cognito credentials manually, shares them securely → practitioner logs into the portal and manages patients → **Practitioner Operations** supports the account thereafter. There is NO public practitioner onboarding, application, or approval journey; `PENDING` is an internal administrative state only and **ACTIVE is the normal lifecycle state**. Approval mechanics remain in code for future workflows but are not the V1 journey. Every practitioner feature must first answer: *would EMRID staff perform this, or would a practitioner perform this?* Administration creates; Practitioner Operations manages. Do not regress to a public registration model unless explicitly instructed by the CPTO.
+
+## 13. Observability (GH-1) — operator setup
+
+Engineering ships a structured error seam: every error boundary, server-action catch, and the `/e` audit-failure path emits ONE single-line JSON record to stderr with a stable marker — `emrid-ops:error` (Ops) / `emrid:error` (Patient). Client-side errors beacon to `/api/client-error` (Ops: behind the cookie gate; Patient: public, size-capped, WAF-rate-limited per the edge runbook) and re-emit through the same seam. Records carry scope/digest/ids only — never PII. Amplify SSR compute logs land in CloudWatch automatically.
+
+**Operator steps (one-off, per app):**
+1. Find the Amplify compute log group (Amplify console → App → Hosting → Monitoring → Logs), e.g. `/aws/amplify/<appId>`.
+2. Metric filter: pattern `"emrid-ops:error"` (resp. `"emrid:error"`) → metric `EmridOps/Errors` (resp. `Emrid/Errors`), value 1.
+3. Alarm: `>= 5 errors in 5 min` → SNS topic → email/phone. Also add a `>= 1` alarm for `scope:"route:/e:audit-write"` (audit pipeline failure on the life-safety route).
+4. Uptime: an external or Route53 health check on `GET /api/health` for BOTH apps (expect 200 + `"ok":true`; also asserts `mock.*=false` after each deploy — this is now the deploy-verification step).
+5. Test-fire: temporarily lower an alarm threshold, hit a bad route, confirm the notification arrives, restore.
+
+## 14. Backup & recovery assumptions (GH-6) — VERIFY, do not assume
+
+Engineering cannot see live AWS state; the following are ASSUMPTIONS the operator must confirm before pilot:
+
+- [ ] **DynamoDB PITR** on `emrid-dev-app`: `aws dynamodb describe-continuous-backups --table-name emrid-dev-app` → `PointInTimeRecoveryStatus: ENABLED`. If not: enable. PITR is the primary recovery mechanism (restore-to-new-table + repoint `DYNAMODB_TABLE_NAME`).
+- [ ] **S3 versioning** on `emrid-dev-documents`: `aws s3api get-bucket-versioning --bucket emrid-dev-documents` → `Enabled`. Protects identity documents from overwrite/delete.
+- [ ] **Cognito has NO native backup** — pool loss means credential re-provisioning. Acceptable for the pilot cohort size; record the accepted risk (Risk Register R-18). Keep the practitioner/staff provisioning steps (§12) as the re-provisioning runbook.
+- [ ] **Recovery drill (tabletop)**: restore table to `emrid-recovery-test` from PITR, point a local build at it, confirm a customer workspace renders. Document time taken (RTO evidence).
+- **Recovery ordering**: table first, then Lambda event-source mapping re-enable, then apps (stateless). Work items/directory/aggregate are re-derivable via the producer + backfill scripts if projections are lost — profiles/emergency/identity/audit are the primary data.
+- **RPO**: PITR gives ~5-minute granularity; acceptable for pilot. **RTO target**: half a day (manual restore + repoint), acceptable for pilot — revisit for GA.
+
+## 15. Health & deploy verification (GH-5)
+
+- `GET /api/health` on both apps: secret-free `{ ok, mock: {auth,data,uploads}, ... }`. After EVERY deploy confirm `mock.*` are all `false` (Ops also reports `cognitoConfigured: true`). This replaces log-diving for the `resolved config` line.
+- Deployment notifications: enable Amplify build notifications (console → App settings → Notifications) to email on build failure for both apps.
+- Rollback: unchanged (redeploy previous Amplify build; apps are stateless; Lambda rollback = re-upload previous producer.zip; table untouched).

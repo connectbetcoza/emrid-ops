@@ -1,6 +1,7 @@
 "use server";
 
 import { requireOpsUser } from "@/lib/auth/server";
+import { reportError } from "@/lib/observability/report";
 import {
   getAuditRepository,
   getPractitionerRepository,
@@ -64,7 +65,8 @@ export async function onboardPractitioner(
       metadata: { practiceId: practice.practiceId },
     });
     return { ok: true, practitionerId };
-  } catch {
+  } catch (error) {
+    reportError(error, { scope: "action:onboardPractitioner" });
     return { ok: false, error: "Couldn't create the practitioner — please try again." };
   }
 }
@@ -114,6 +116,10 @@ export async function linkPractitionerLogin(
       error.message === "A practitioner already exists for that login."
         ? error.message
         : "Couldn't link the login — please try again.";
+    // The id-collision case is an expected user-facing outcome, not a fault.
+    if (message === "Couldn't link the login — please try again.") {
+      reportError(error, { scope: "action:linkPractitionerLogin" });
+    }
     return { ok: false, error: message };
   }
 }
@@ -152,7 +158,8 @@ export async function updatePractitionerAccount(
       },
     });
     return { ok: true, practitionerId: input.practitionerId };
-  } catch {
+  } catch (error) {
+    reportError(error, { scope: "action:updatePractitionerAccount" });
     return { ok: false, error: "Couldn't save the changes — please try again." };
   }
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { requireOpsUser } from "@/lib/auth/server";
+import { reportError } from "@/lib/observability/report";
 import {
   getAuditRepository,
   getNoteRepository,
@@ -47,7 +48,8 @@ export async function addInternalNote(
       }),
     );
     return { ok: true, note };
-  } catch {
+  } catch (error) {
+    reportError(error, { scope: "action:addInternalNote" });
     return { ok: false, error: "Couldn't save the note — please try again." };
   }
 }
@@ -102,7 +104,8 @@ export async function logSupportQuery(
       },
     });
     return { ok: true, workItemId: record.workItemId };
-  } catch {
+  } catch (error) {
+    reportError(error, { scope: "action:logSupportQuery" });
     return { ok: false, error: "Couldn't log the query — please try again." };
   }
 }
