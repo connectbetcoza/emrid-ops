@@ -103,14 +103,14 @@ export default async function CustomerWorkspacePage({
     }),
   );
 
-  // Card Fulfilment Pack — a Workspace section, shown while the customer has
-  // active ISSUE_CARD work so the fulfilment officer never asks "what do I
-  // encode?". Assembled from repository state (device + profile EMRID + the
-  // device's tap audit trail); null pack ⇒ device not issued yet.
-  const hasCardWork = work.some((w) => w.type === "ISSUE_CARD");
+  // Card Fulfilment Pack — a PERMANENT Workspace section whenever the customer
+  // has any device (pilot patch 2): the NFC URL / token / device details must
+  // stay visible after fulfilment completes, for replacements and support.
+  // Assembled from repository state (device + profile EMRID + the device's tap
+  // audit trail); fulfilmentDevice prefers PENDING, then ACTIVE, then any.
   let fulfilmentPack: FulfilmentPack | null = null;
   let showFulfilmentPack = false;
-  if (hasCardWork) {
+  if (devices.length > 0) {
     showFulfilmentPack = true;
     const profile = await getProfileRepository().getProfile(customer.id);
     const device = fulfilmentDevice(devices);
