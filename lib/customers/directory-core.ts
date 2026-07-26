@@ -52,7 +52,8 @@ export function customerFromState(input: {
   return {
     id: profile.profileId,
     fullName: `${profile.firstName} ${profile.lastName}`.trim(),
-    email: "",
+    email: profile.contactEmail ?? "",
+    mobile: profile.contactMobile,
     joinedAt: profile.createdAt,
     profileComplete: isProfileComplete(profile),
     identityStatus:

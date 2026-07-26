@@ -43,6 +43,9 @@ export type Profile = {
   lastName: string;
   dateOfBirth: string;
   photoUrl?: string;
+  /** Contact details (cross-product contract extension, 2026-07-26). */
+  contactEmail?: string;
+  contactMobile?: string;
   status: ProfileStatus;
   verificationLevel: VerificationLevel;
   idType?: IdType;

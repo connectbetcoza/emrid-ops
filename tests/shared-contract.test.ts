@@ -91,6 +91,8 @@ const profile: Profile = {
   firstName: "Test",
   lastName: "Person",
   dateOfBirth: "1990-01-01",
+  contactEmail: "test.person@example.com",
+  contactMobile: "+27 82 000 0000",
   status: "ACTIVE",
   verificationLevel: "UNVERIFIED",
   idType: "SOUTH_AFRICAN_ID",

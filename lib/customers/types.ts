@@ -14,9 +14,9 @@ export type ProtectionStatus = "PROTECTED" | "IN_PROGRESS" | "UNPROTECTED";
 export type Customer = {
   id: string;
   fullName: string;
+  /** Contact details projected from the Profile (blank for legacy profiles). */
   email: string;
   mobile?: string;
-  location?: string;
   joinedAt: ISODateString;
 
   // Readiness / protection facets

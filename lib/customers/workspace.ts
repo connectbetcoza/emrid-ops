@@ -40,7 +40,6 @@ export function customerSummary(c: Customer): SummaryItem[] {
   return [
     { label: "Email", value: c.email },
     { label: "Mobile", value: c.mobile ?? "—" },
-    { label: "Location", value: c.location ?? "—" },
     { label: "Joined", value: formatDate(c.joinedAt) },
     { label: "Identity", value: identityLabel(c.identityStatus) },
     { label: "Card", value: cardLabel(c.cardStatus) },

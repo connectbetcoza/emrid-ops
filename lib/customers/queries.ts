@@ -42,7 +42,7 @@ export function searchCustomers(
   const q = query.trim().toLowerCase();
   if (q.length === 0) return customers;
   return customers.filter((c) =>
-    [c.fullName, c.email, c.location ?? "", c.id]
+    [c.fullName, c.email, c.mobile ?? "", c.id]
       .join(" ")
       .toLowerCase()
       .includes(q),

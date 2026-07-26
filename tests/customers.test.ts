@@ -103,15 +103,15 @@ describe("customer queries", () => {
     expect(scores[1]).toBeLessThanOrEqual(scores[2]!);
   });
 
-  it("searchCustomers matches name/email/location/id, empty → all", () => {
+  it("searchCustomers matches name/email/mobile/id, empty → all", () => {
     expect(searchCustomers(MOCK_CUSTOMERS, "")).toHaveLength(
       MOCK_CUSTOMERS.length,
     );
     expect(searchCustomers(MOCK_CUSTOMERS, "thandi").map((c) => c.id)).toEqual([
       "CUS-2041",
     ]);
-    expect(searchCustomers(MOCK_CUSTOMERS, "cape town").length).toBeGreaterThan(
-      1,
-    );
+    // Location was removed from the Customer shape (never collected — data
+    // minimisation); email remains searchable.
+    expect(searchCustomers(MOCK_CUSTOMERS, "@example").length).toBeGreaterThan(1);
   });
 });

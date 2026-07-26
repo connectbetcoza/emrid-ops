@@ -68,6 +68,8 @@ export function itemToProfile(item: Record<string, unknown>): Profile {
     lastName: String(item.lastName),
     dateOfBirth: String(item.dateOfBirth),
     photoUrl: str(item.photoUrl),
+    contactEmail: str(item.contactEmail),
+    contactMobile: str(item.contactMobile),
     status: item.status as Profile["status"],
     verificationLevel: item.verificationLevel as Profile["verificationLevel"],
     idType: item.idType as Profile["idType"],

@@ -36,7 +36,7 @@ export function CustomerListItem({ customer }: { customer: Customer }) {
           {customer.fullName}
         </p>
         <p className="truncate text-xs text-muted-foreground">
-          {customer.location ? `${customer.location} · ` : ""}
+          {customer.email ? `${customer.email} · ` : ""}
           {customer.id}
         </p>
       </div>
