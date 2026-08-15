@@ -7,6 +7,7 @@ import type {
 } from "@/lib/data/entities";
 import type {
   IdentityDecisionInput,
+  UpdateContactDetailsInput,
   ProfileRepository,
 } from "@/lib/data/types";
 import { defaultDeps, type DynamoDeps } from "@/lib/data/aws/client";
@@ -42,6 +43,42 @@ export class DynamoProfileRepository implements ProfileRepository {
     if (!result.Item) return null;
     const profile = itemToProfile(result.Item);
     return profile.status === "DELETED" ? null : profile;
+  }
+
+  async updateContactDetails(
+    profileId: string,
+    input: UpdateContactDetailsInput,
+  ): Promise<Profile> {
+    const { doc, table } = this.deps();
+    // WHITELIST: only the two contact fields can ever enter the expression —
+    // extra keys on the input object are ignored by construction (CMS Stage 1;
+    // pinned by test). Never creates a profile (attribute_exists).
+    const sets: string[] = [];
+    const values: Record<string, unknown> = {};
+    if (input.contactEmail !== undefined) {
+      sets.push("contactEmail = :ce");
+      values[":ce"] = input.contactEmail;
+    }
+    if (input.contactMobile !== undefined) {
+      sets.push("contactMobile = :cm");
+      values[":cm"] = input.contactMobile;
+    }
+    if (sets.length === 0) {
+      throw new Error("No contact fields provided.");
+    }
+    sets.push("updatedAt = :ts");
+    values[":ts"] = nowIso();
+    const result = await doc.send(
+      new UpdateCommand({
+        TableName: table,
+        Key: { PK: profilePk(profileId), SK: PROFILE_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return itemToProfile(result.Attributes ?? {});
   }
 
   async getIdentity(profileId: string): Promise<IdentityRecord | null> {

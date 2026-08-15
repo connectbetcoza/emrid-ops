@@ -12,6 +12,7 @@ import { ReadinessBadge } from "@/components/readiness/ReadinessBadge";
 import { ProtectionStatusBadge } from "@/components/customers/ProtectionStatusBadge";
 import { ActiveWork } from "@/components/customers/ActiveWork";
 import { CardFulfilmentPack } from "@/components/customers/CardFulfilmentPack";
+import { ContactCorrectionForm } from "@/components/customers/ContactCorrectionForm";
 import { DevicesCard } from "@/components/customers/DevicesCard";
 import { FamilyCard } from "@/components/customers/FamilyCard";
 import { MembershipCard } from "@/components/customers/MembershipCard";
@@ -191,6 +192,13 @@ export default async function CustomerWorkspacePage({
             <QuickActions work={work} />
             <ActionPanel title="Customer support">
               <SupportQueryPanel customerId={customer.id} />
+            </ActionPanel>
+            <ActionPanel title="Contact correction">
+              <ContactCorrectionForm
+                profileId={customer.id}
+                currentEmail={customer.email}
+                currentMobile={customer.mobile}
+              />
             </ActionPanel>
           </>
         }

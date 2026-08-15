@@ -244,6 +244,8 @@ describe("shared entity enum values (reconciled with the Patient Platform)", () 
       PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED",
       PRACTITIONER_ONBOARDED: "PRACTITIONER_ONBOARDED",
       PRACTITIONER_UPDATED: "PRACTITIONER_UPDATED",
+      // CMS Stage 1: contact corrections reuse the existing Patient event.
+      PROFILE_UPDATED: "PROFILE_UPDATED",
     });
   });
 });

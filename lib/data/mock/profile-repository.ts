@@ -6,6 +6,7 @@ import type {
 import type {
   IdentityDecisionInput,
   ProfileRepository,
+  UpdateContactDetailsInput,
 } from "@/lib/data/types";
 import { mockStore } from "@/lib/data/mock/store";
 import { nowIso } from "@/lib/data/ids";
@@ -24,6 +25,23 @@ export class MockProfileRepository implements ProfileRepository {
     return [...mockStore.profiles.values()]
       .filter((p) => p.status !== "DELETED" && p.identityVerificationStatus === status)
       .map((p) => ({ ...p }));
+  }
+
+  async updateContactDetails(
+    profileId: string,
+    input: UpdateContactDetailsInput,
+  ): Promise<Profile> {
+    const existing = mockStore.profiles.get(profileId);
+    if (!existing) throw new Error(`Profile not found: ${profileId}`);
+    // WHITELIST parity with the Dynamo adapter — only the two contact fields.
+    const updated: Profile = {
+      ...existing,
+      ...(input.contactEmail !== undefined && { contactEmail: input.contactEmail }),
+      ...(input.contactMobile !== undefined && { contactMobile: input.contactMobile }),
+      updatedAt: new Date().toISOString(),
+    };
+    mockStore.profiles.set(profileId, updated);
+    return { ...updated };
   }
 
   async getIdentity(profileId: string): Promise<IdentityRecord | null> {

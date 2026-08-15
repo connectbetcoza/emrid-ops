@@ -40,8 +40,28 @@ export type IdentityDecisionInput = {
   decidedByOpsUserId: string;
 };
 
+/**
+ * CMS Stage 1: the ONLY customer-particular fields Ops may write. Contact
+ * details are display data decoupled from the Cognito login — changing them
+ * never touches authentication. Deliberately NOT a generic profile update:
+ * name/DOB/medical/identity mutation is structurally impossible through this
+ * input.
+ */
+export type UpdateContactDetailsInput = {
+  contactEmail?: string;
+  contactMobile?: string;
+};
+
 export interface ProfileRepository {
   getProfile(profileId: string): Promise<Profile | null>;
+  /**
+   * Support contact correction — conditional update of an EXISTING profile,
+   * whitelisted to the two contact fields (+ updatedAt). Never creates.
+   */
+  updateContactDetails(
+    profileId: string,
+    input: UpdateContactDetailsInput,
+  ): Promise<Profile>;
   /**
    * Profiles at a given identity-verification status — the source of the
    * Identity queue projection. NOTE: the shared table has no index on identity

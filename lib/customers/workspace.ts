@@ -3,6 +3,7 @@ import type { TimelineEvent } from "@/components/workspace/TimelineArea";
 import type { SummaryItem } from "@/components/workspace/SummaryPanel";
 import { formatDate } from "@/lib/format";
 import type {
+  AccountStatus,
   CardStatus,
   Customer,
   IdentityStatus,
@@ -36,8 +37,20 @@ export function cardLabel(status: CardStatus): string {
 }
 
 /** Key/value summary for the workspace SummaryPanel. */
+const ACCOUNT_STATUS_LABEL: Record<AccountStatus, string> = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive",
+  LEGACY: "Legacy",
+  DELETED: "Deleted",
+};
+
 export function customerSummary(c: Customer): SummaryItem[] {
   return [
+    { label: "EMRID", value: c.emrid ?? "—" },
+    {
+      label: "Account",
+      value: c.accountStatus ? ACCOUNT_STATUS_LABEL[c.accountStatus] : "—",
+    },
     { label: "Email", value: c.email },
     { label: "Mobile", value: c.mobile ?? "—" },
     { label: "Joined", value: formatDate(c.joinedAt) },

@@ -52,6 +52,8 @@ export function customerFromState(input: {
   return {
     id: profile.profileId,
     fullName: `${profile.firstName} ${profile.lastName}`.trim(),
+    emrid: profile.emrid,
+    accountStatus: profile.status,
     email: profile.contactEmail ?? "",
     mobile: profile.contactMobile,
     joinedAt: profile.createdAt,
@@ -102,6 +104,7 @@ export function entryToCustomer(entry: DirectoryEntry): Customer {
   return {
     id: entry.profileId,
     fullName: entry.displayName,
+    emrid: entry.emrid,
     email: "",
     joinedAt: entry.joinedAt,
     profileComplete: entry.profileComplete,

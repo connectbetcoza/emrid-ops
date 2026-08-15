@@ -11,9 +11,15 @@ export type ProtectionStatus = "PROTECTED" | "IN_PROGRESS" | "UNPROTECTED";
  * derived from (see `lib/customers/readiness`) — never a precomputed score, so
  * there is one source of truth. Sprint 2 instances are mock.
  */
+export type AccountStatus = "ACTIVE" | "INACTIVE" | "LEGACY" | "DELETED";
+
 export type Customer = {
   id: string;
   fullName: string;
+  /** Human-readable EMRID code (absent only for malformed legacy data). */
+  emrid?: string;
+  /** Profile lifecycle status (unavailable on the directory-entry path). */
+  accountStatus?: AccountStatus;
   /** Contact details projected from the Profile (blank for legacy profiles). */
   email: string;
   mobile?: string;

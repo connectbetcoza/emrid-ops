@@ -21,6 +21,12 @@ export const OPS_AUDIT_EVENT = {
   PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED",
   PRACTITIONER_ONBOARDED: "PRACTITIONER_ONBOARDED",
   PRACTITIONER_UPDATED: "PRACTITIONER_UPDATED",
+  /**
+   * CMS Stage 1: support contact corrections reuse the EXISTING Patient event
+   * (already in the Patient union + labels — no cross-product change). The OPS
+   * actorType distinguishes it from the customer's own edits.
+   */
+  PROFILE_UPDATED: "PROFILE_UPDATED",
 } as const;
 
 export type OpsAuditEventType =
