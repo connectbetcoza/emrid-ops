@@ -13,6 +13,7 @@ import {
   type ContactCorrectionInput,
   type ContactCorrectionResult,
 } from "@/lib/customers/contact-correction";
+import { reportAuthzDenial } from "@/lib/observability/report";
 
 /**
  * CMS Stage 1 server action — thin wrapper per Rule 15; all branching lives in
@@ -24,7 +25,7 @@ export async function correctContactDetails(
 ): Promise<ContactCorrectionResult> {
   const user = await requireOpsUser();
   try {
-    return await executeContactCorrection(
+    const result = await executeContactCorrection(
       {
         profileRepo: getProfileRepository(),
         auditRepo: getAuditRepository(),
@@ -33,11 +34,20 @@ export async function correctContactDetails(
       {
         profileId,
         input,
-        actor: { userId: user.userId, fullName: user.fullName },
+        actor: { userId: user.userId, fullName: user.fullName, roles: user.roles },
         noteId: newNoteId(),
         now: nowIso(),
       },
     );
+    if (!result.ok && result.denied) {
+      reportAuthzDenial({
+        userId: user.userId,
+        permission: "CORRECT_CONTACT_DETAILS",
+        scope: "action:correctContactDetails",
+        subjectId: profileId,
+      });
+    }
+    return result;
   } catch (error) {
     reportError(error, {
       scope: "action:correctContactDetails",

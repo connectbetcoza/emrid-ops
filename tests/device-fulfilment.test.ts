@@ -108,7 +108,7 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
     const idWork = (await deps.workRepo.listByDomain("IDENTITY")).find(
       (w) => w.customerId === id,
     )!;
-    await executeTransition(deps, { current: idWork, toStatus: "DONE", actorId: "ops-1" });
+    await executeTransition(deps, { current: idWork, toStatus: "DONE", actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] } });
     expect((await deps.aggregateRepo.getProtectedLives()).protectedCount).toBe(
       protectedBefore,
     );
@@ -120,7 +120,7 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
     const cardWork = (await deps.workRepo.listByDomain("FULFILMENT")).find(
       (w) => w.customerId === id,
     )!;
-    await executeTransition(deps, { current: cardWork, toStatus: "DONE", actorId: "ops-1" });
+    await executeTransition(deps, { current: cardWork, toStatus: "DONE", actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] } });
 
     // Step 11 — Protected.
     const customer = (await getCustomerState(id))!;
@@ -180,7 +180,7 @@ describe("Fulfilment dispatch does NOT activate the card or protect the customer
         current: record,
         toStatus: primary.toStatus,
         step: record.step + 1,
-        actorId: "ops-1",
+        actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] },
       });
       expect(res.ok).toBe(true);
       if (!res.ok) throw new Error(res.error);

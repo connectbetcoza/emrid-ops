@@ -10,7 +10,14 @@ import type { WorkItem } from "@/lib/work/types";
  * Fulfilment/Support/Practitioner tomorrow — right here in the one Workspace,
  * with no type-specific UI.
  */
-export function ActiveWork({ items }: { items: WorkItem[] }) {
+export function ActiveWork({
+  items,
+  actionableDomains,
+}: {
+  items: WorkItem[];
+  /** Server-computed allowlist (pure permission core); undefined = all. */
+  actionableDomains?: string[];
+}) {
   return (
     <Card className="space-y-4">
       <CardTitle>Active work</CardTitle>
@@ -22,7 +29,14 @@ export function ActiveWork({ items }: { items: WorkItem[] }) {
       ) : (
         <ul className="space-y-2">
           {items.map((item) => (
-            <WorkItemRow key={item.id} item={item} />
+            <WorkItemRow
+              key={item.id}
+              item={item}
+              canAct={
+                actionableDomains === undefined ||
+                actionableDomains.includes(item.domain)
+              }
+            />
           ))}
         </ul>
       )}

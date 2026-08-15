@@ -16,7 +16,11 @@ import type { DynamoDeps } from "@/lib/data/aws/client";
 import type { Customer } from "@/lib/customers/types";
 
 const NOW = "2026-08-15T10:00:00.000Z";
-const ACTOR = { userId: "ops-1", fullName: "Test Officer" };
+const ACTOR = {
+  userId: "ops-1",
+  fullName: "Test Officer",
+  roles: ["CUSTOMER_SUPPORT"] as const,
+};
 
 const NEW_EMAIL = "new.address@example.com";
 const NEW_MOBILE = "+27 82 111 2222";

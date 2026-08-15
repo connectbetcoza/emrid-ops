@@ -1,3 +1,7 @@
+import { requireOpsUser } from "@/lib/auth/server";
+import { hasPermission } from "@/lib/auth/permissions";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ShieldX } from "lucide-react";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -13,7 +17,22 @@ export const metadata: Metadata = { title: "Administration" };
  * tokens) and the staff role vocabulary Cognito groups must match. Read-only;
  * user management lives in Cognito (operator-owned).
  */
-export default function AdministrationPage() {
+export default async function AdministrationPage() {
+  const user = await requireOpsUser();
+  if (!hasPermission(user, "VIEW_ADMINISTRATION")) {
+    // Direct navigation fails closed server-side; the sidebar link is also
+    // hidden for these roles (convenience).
+    return (
+      <div className="mx-auto max-w-lg py-12">
+        <EmptyState
+          icon={ShieldX}
+          title="Administration requires permission"
+          description="Your role can't view Administration. Contact an administrator if you need access."
+        />
+      </div>
+    );
+  }
+
   const adapters = [
     { label: "Authentication", mock: config.useMockAuth, live: "Cognito" },
     { label: "Data", mock: config.useMockData, live: "DynamoDB" },

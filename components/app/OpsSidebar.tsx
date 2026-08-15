@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * blocks separated by dividers, with quiet section labels. Visible on tablet
  * and up (the platform is desktop/tablet only — no mobile nav by design).
  */
-export function OpsSidebar() {
+export function OpsSidebar({ hiddenHrefs = [] }: { hiddenHrefs?: string[] }) {
   const pathname = usePathname();
 
   return (
@@ -23,7 +23,12 @@ export function OpsSidebar() {
         aria-label="Primary"
         className="flex-1 space-y-5 overflow-y-auto px-3 py-5"
       >
-        {OPS_NAV.map((group, idx) => (
+        {OPS_NAV.map((group) => ({
+          ...group,
+          items: group.items.filter((i) => !hiddenHrefs.includes(i.href)),
+        }))
+          .filter((group) => group.items.length > 0)
+          .map((group, idx) => (
           <div key={group.id} className="space-y-1">
             {group.label ? (
               <p className="px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">

@@ -25,6 +25,9 @@ import { recordToWorkItem } from "@/lib/work/record";
 import { activeWork } from "@/lib/work/projections";
 import { formatDate } from "@/lib/format";
 import { credentialsPending } from "@/lib/practitioners/manage-core";
+import { requireOpsUser } from "@/lib/auth/server";
+import { hasPermission } from "@/lib/auth/permissions";
+import { Muted } from "@/components/ui/Typography";
 import type { PractitionerStatus } from "@/lib/data/entities";
 
 /** Exhaustive practitioner-status display meta (compiler-enforced). */
@@ -62,6 +65,8 @@ export default async function PractitionerWorkspacePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const user = await requireOpsUser();
+  const canManage = hasPermission(user, "MANAGE_PRACTITIONERS");
   const { id } = await params;
   const practitioner = await getPractitionerRepository().getPractitioner(id);
   if (!practitioner) notFound();
@@ -112,11 +117,15 @@ export default async function PractitionerWorkspacePage({
         }
         actions={
           <ActionPanel title="Account management">
-            <ApprovalPanel
-              item={approvalItem}
-              status={practitioner.status}
-              statusNotes={practitioner.statusNotes}
-            />
+            {canManage ? (
+              <ApprovalPanel
+                item={approvalItem}
+                status={practitioner.status}
+                statusNotes={practitioner.statusNotes}
+              />
+            ) : (
+              <Muted>Read-only — managing practitioners requires the Practitioner Manager role.</Muted>
+            )}
           </ActionPanel>
         }
         timeline={<TimelineArea events={auditTimeline(auditEvents)} />}
@@ -137,7 +146,7 @@ export default async function PractitionerWorkspacePage({
                       : ", no registration number on file"}
                     . {status.label}.
                   </Text>
-                  <ActiveWork items={work} />
+                  <ActiveWork items={work} actionableDomains={canManage ? ["PRACTITIONER"] : []} />
                   <LinkedPatients grants={patientAccess} />
                 </div>
               ),
@@ -147,7 +156,13 @@ export default async function PractitionerWorkspacePage({
               label: "Manage",
               content: (
                 <div className="space-y-4">
-                  {credentialsPending(practitioner.practitionerId) ? (
+                  {!canManage ? (
+                    <Muted>
+                      Read-only — account changes require the Practitioner
+                      Manager role.
+                    </Muted>
+                  ) : null}
+                  {canManage && credentialsPending(practitioner.practitionerId) ? (
                     <div className="space-y-3 rounded-md bg-warning/10 px-3 py-2.5">
                       <p className="text-sm text-warning">
                         Credentials pending — this account has no linked login
@@ -160,7 +175,9 @@ export default async function PractitionerWorkspacePage({
                       />
                     </div>
                   ) : null}
-                  <AccountForm practitioner={practitioner} practice={practice} />
+                  {canManage ? (
+                    <AccountForm practitioner={practitioner} practice={practice} />
+                  ) : null}
                 </div>
               ),
             },
@@ -168,7 +185,7 @@ export default async function PractitionerWorkspacePage({
               id: "work",
               label:
                 work.length > 0 ? `Active work · ${work.length}` : "Active work",
-              content: <ActiveWork items={work} />,
+              content: <ActiveWork items={work} actionableDomains={canManage ? ["PRACTITIONER"] : []} />,
             },
           ]}
         />

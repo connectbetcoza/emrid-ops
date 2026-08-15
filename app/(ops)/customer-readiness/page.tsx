@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/PageHeader";
 import { WorkQueue } from "@/components/work/WorkQueue";
 import { getWorkItemRepository } from "@/lib/data";
+import { requireOpsUser } from "@/lib/auth/server";
+import {
+  WORK_DOMAIN_PERMISSION,
+  hasPermission,
+} from "@/lib/auth/permissions";
 import { recordToWorkItem } from "@/lib/work/record";
 
 export const metadata: Metadata = { title: "Customer Readiness" };
@@ -13,6 +18,10 @@ export const metadata: Metadata = { title: "Customer Readiness" };
  * single Customer Workspace.
  */
 export default async function CustomerReadinessPage() {
+  const user = await requireOpsUser();
+  // Bulk transition affordance is permission-gated (UI convenience; the
+  // server action re-enforces per item).
+  const canBulk = hasPermission(user, WORK_DOMAIN_PERMISSION.READINESS);
   const records = await getWorkItemRepository().listByDomain("READINESS");
   const items = records.map(recordToWorkItem);
 
@@ -24,7 +33,7 @@ export default async function CustomerReadinessPage() {
       />
       <WorkQueue
         items={items}
-        primaryBulkLabel="Mark complete"
+        primaryBulkLabel={canBulk ? "Mark complete" : undefined}
         emptyTitle="No readiness work"
         emptyDescription="No readiness gaps are waiting. Every customer is on track."
       />

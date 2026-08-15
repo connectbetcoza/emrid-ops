@@ -186,7 +186,7 @@ describe("executeTransition: approve identity → both items moved, profile veri
         aggregateRepo: new MockAggregateRepository(),
         practitionerRepo: new MockPractitionerRepository(),
       },
-      { current: work, toStatus: "DONE", actorId: "ops-1" },
+      { current: work, toStatus: "DONE", actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] } },
     );
 
     expect(result.ok).toBe(true);
@@ -220,7 +220,7 @@ describe("Phase 3 seam via the factory (mock mode)", () => {
         aggregateRepo: getAggregateRepository(),
         practitionerRepo: getPractitionerRepository(),
       },
-      { current: before, toStatus: "DONE", actorId: "ops-1" },
+      { current: before, toStatus: "DONE", actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] } },
     );
     expect(result.ok).toBe(true);
 

@@ -3,6 +3,8 @@ import { UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
+import { requireOpsUser } from "@/lib/auth/server";
+import { hasPermission } from "@/lib/auth/permissions";
 import { WorkQueue } from "@/components/work/WorkQueue";
 import { PractitionerRoster } from "@/components/practitioners/PractitionerRoster";
 import { getDirectoryRepository, getWorkItemRepository } from "@/lib/data";
@@ -18,6 +20,8 @@ export const metadata: Metadata = { title: "Practitioners" };
  * account work projects through the one generic queue.
  */
 export default async function PractitionersPage() {
+  const user = await requireOpsUser();
+  const canManage = hasPermission(user, "MANAGE_PRACTITIONERS");
   const [practitioners, records] = await Promise.all([
     getDirectoryRepository().listPractitioners(),
     getWorkItemRepository().listByDomain("PRACTITIONER"),
@@ -30,10 +34,12 @@ export default async function PractitionersPage() {
         title="Practitioners"
         description="Practitioner accounts and their practices — onboard, support, and manage."
         actions={
+          canManage ? (
           <ButtonLink href="/practitioners/onboard" size="sm">
             <UserPlus className="h-4 w-4" aria-hidden />
             Onboard practitioner
           </ButtonLink>
+          ) : undefined
         }
       />
 

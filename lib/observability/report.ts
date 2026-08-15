@@ -24,6 +24,34 @@ export type ErrorReportContext = {
 const truncate = (value: string, max: number): string =>
   value.length > max ? `${value.slice(0, max)}…` : value;
 
+export const AUTHZ_MARKER = "emrid-ops:authz-denied";
+
+/**
+ * Record a DENIED authorization attempt (GH-RBAC) — a security signal, not an
+ * application failure: it carries its own marker so the operator's error
+ * alarms are never polluted by expected denials, while a separate metric
+ * filter can watch for denial spikes. Ids and permission names only — never
+ * contact data, medical values, tokens, codes, or note content.
+ */
+export function reportAuthzDenial(context: {
+  userId: string;
+  permission: string;
+  scope: string;
+  subjectId?: string;
+}): void {
+  try {
+    console.warn(
+      JSON.stringify({
+        marker: AUTHZ_MARKER,
+        ...context,
+        at: new Date().toISOString(),
+      }),
+    );
+  } catch {
+    // Never cascade.
+  }
+}
+
 /** Report an error. NEVER throws — observability must not break the request. */
 export function reportError(error: unknown, context: ErrorReportContext): void {
   try {

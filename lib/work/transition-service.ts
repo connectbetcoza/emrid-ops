@@ -10,6 +10,13 @@ import type {
 import type { WorkItemRecord } from "@/lib/data/work-record";
 import type { WorkStatus } from "@/lib/work/status";
 import { planTransition } from "@/lib/work/transition-core";
+import { workTypeMeta } from "@/lib/work/work-type";
+import {
+  PERMISSION_DENIED_MESSAGE,
+  WORK_DOMAIN_PERMISSION,
+  hasPermission,
+} from "@/lib/auth/permissions";
+import type { OpsRole } from "@/types";
 import { OPS_AUDIT_EVENT } from "@/lib/work/audit";
 import { protectionStatusFromFacets } from "@/lib/customers/readiness";
 import { hasEmergencyInfo } from "@/lib/customers/facets";
@@ -39,7 +46,9 @@ export type ExecuteTransitionInput = {
   current: WorkItemRecord;
   toStatus: WorkStatus;
   step?: number;
-  actorId: string;
+  /** The acting operator — roles are enforced HERE (authoritative), against
+   * the domain derived from the item's TYPE, never a client-sent domain. */
+  actor: { userId: string; roles: readonly OpsRole[] };
   notes?: string;
   /** Explicit decision for decision-bearing types (practitioner approval). */
   decision?: "APPROVED" | "REJECTED";
@@ -47,12 +56,19 @@ export type ExecuteTransitionInput = {
 
 export type ExecuteTransitionResult =
   | { ok: true; record: WorkItemRecord; persistedDecision: boolean }
-  | { ok: false; error: string };
+  | { ok: false; error: string; denied?: true };
 
 export async function executeTransition(
   deps: TransitionDeps,
   input: ExecuteTransitionInput,
 ): Promise<ExecuteTransitionResult> {
+  // 0. Authorization FIRST — before any read or write. The required
+  //    permission comes from the item's type→domain (server-owned metadata).
+  const domain = workTypeMeta(input.current.workType).domain;
+  if (!hasPermission({ roles: [...input.actor.roles] }, WORK_DOMAIN_PERMISSION[domain])) {
+    return { ok: false, error: PERMISSION_DENIED_MESSAGE, denied: true };
+  }
+
   const plan = planTransition({
     type: input.current.workType,
     toStatus: input.toStatus,
@@ -97,7 +113,7 @@ export async function executeTransition(
       await deps.profileRepo.setIdentityDecision(cid, {
         decision: plan.decision,
         notes: input.notes,
-        decidedByOpsUserId: input.actorId,
+        decidedByOpsUserId: input.actor.userId,
       });
       eventType =
         plan.decision === "VERIFIED"
@@ -130,7 +146,7 @@ export async function executeTransition(
     await deps.practitionerRepo.setApprovalDecision(cid, {
       decision: plan.decision,
       notes: input.notes,
-      decidedByOpsUserId: input.actorId,
+      decidedByOpsUserId: input.actor.userId,
     });
     eventType =
       plan.decision === "APPROVED"
@@ -144,7 +160,7 @@ export async function executeTransition(
   await deps.auditRepo.record({
     eventType,
     actorType: "OPS",
-    actorId: input.actorId,
+    actorId: input.actor.userId,
     targetType: practitionerWork ? "USER" : "PROFILE",
     targetId: input.current.customerId,
     metadata: { workItemId: input.current.workItemId, toStatus: input.toStatus },

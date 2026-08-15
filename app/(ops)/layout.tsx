@@ -1,4 +1,5 @@
 import { OpsSidebar } from "@/components/app/OpsSidebar";
+import { hasPermission } from "@/lib/auth/permissions";
 import { OpsHeader } from "@/components/app/OpsHeader";
 import { CommandPaletteProvider } from "@/components/command/CommandPaletteProvider";
 import { ToastProvider } from "@/components/feedback/ToastProvider";
@@ -50,7 +51,13 @@ export default async function OpsLayout({
             Skip to content
           </a>
           <div className="flex min-h-screen bg-background">
-            <OpsSidebar />
+            <OpsSidebar
+              hiddenHrefs={
+                hasPermission(user, "VIEW_ADMINISTRATION")
+                  ? []
+                  : ["/administration"]
+              }
+            />
             <div className="flex min-w-0 flex-1 flex-col">
               <OpsHeader
                 name={user.fullName}

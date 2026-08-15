@@ -27,6 +27,12 @@ import { WorkHistory } from "@/components/customers/WorkHistory";
 import { ActionPanel } from "@/components/workspace/ActionPanel";
 import { Text } from "@/components/ui/Typography";
 import { getCustomerState } from "@/lib/customers/state";
+import {
+  WORK_DOMAIN_PERMISSION,
+  hasPermission,
+} from "@/lib/auth/permissions";
+import { requireOpsUser } from "@/lib/auth/server";
+import { WORK_DOMAINS } from "@/lib/work/work-type";
 import { protectionFor } from "@/lib/protection/state";
 import {
   buildFulfilmentPack,
@@ -69,8 +75,18 @@ export default async function CustomerWorkspacePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const user = await requireOpsUser();
   const customer = await getCustomerState(id);
   if (!customer) notFound();
+
+  // Server-computed permission booleans — UI convenience only; every server
+  // action re-enforces authoritatively.
+  const canNotes = hasPermission(user, "ADD_NOTES");
+  const canSupport = hasPermission(user, "RESOLVE_SUPPORT");
+  const canCorrect = hasPermission(user, "CORRECT_CONTACT_DETAILS");
+  const actionableDomains = WORK_DOMAINS.filter((d) =>
+    hasPermission(user, WORK_DOMAIN_PERMISSION[d]),
+  );
 
   const { status, readiness } = protectionFor(customer);
   const familyRepo = getFamilyRepository();
@@ -189,17 +205,23 @@ export default async function CustomerWorkspacePage({
         }
         actions={
           <>
-            <QuickActions work={work} />
-            <ActionPanel title="Customer support">
-              <SupportQueryPanel customerId={customer.id} />
-            </ActionPanel>
-            <ActionPanel title="Contact correction">
-              <ContactCorrectionForm
-                profileId={customer.id}
-                currentEmail={customer.email}
-                currentMobile={customer.mobile}
-              />
-            </ActionPanel>
+            <QuickActions
+              work={work.filter((w) => actionableDomains.includes(w.domain))}
+            />
+            {canSupport ? (
+              <ActionPanel title="Customer support">
+                <SupportQueryPanel customerId={customer.id} />
+              </ActionPanel>
+            ) : null}
+            {canCorrect ? (
+              <ActionPanel title="Contact correction">
+                <ContactCorrectionForm
+                  profileId={customer.id}
+                  currentEmail={customer.email}
+                  currentMobile={customer.mobile}
+                />
+              </ActionPanel>
+            ) : null}
           </>
         }
         timeline={<TimelineArea events={timeline} />}
@@ -221,7 +243,7 @@ export default async function CustomerWorkspacePage({
                       ? "No active work remains."
                       : `${work.length} active work item${work.length === 1 ? "" : "s"}.`}
                   </Text>
-                  <ActiveWork items={work} />
+                  <ActiveWork items={work} actionableDomains={actionableDomains} />
                 </div>
               ),
             },
@@ -230,7 +252,7 @@ export default async function CustomerWorkspacePage({
               label: work.length > 0 ? `Active work · ${work.length}` : "Active work",
               content: (
                 <div className="space-y-4">
-                  <ActiveWork items={work} />
+                  <ActiveWork items={work} actionableDomains={actionableDomains} />
                   <WorkHistory items={history} />
                 </div>
               ),
@@ -238,7 +260,13 @@ export default async function CustomerWorkspacePage({
             {
               id: "notes",
               label: notes.length > 0 ? `Notes · ${notes.length}` : "Notes",
-              content: <InternalNotes subjectId={customer.id} notes={notes} />,
+              content: (
+                <InternalNotes
+                  subjectId={customer.id}
+                  notes={notes}
+                  canAdd={canNotes}
+                />
+              ),
             },
           ]}
         />

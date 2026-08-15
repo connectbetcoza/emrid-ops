@@ -48,7 +48,7 @@ describe("practitioner approval — the full decision path (mock)", () => {
       current: work,
       toStatus: "DONE",
       step: 1,
-      actorId: "ops-1",
+      actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] },
       decision: "APPROVED",
       notes: "Registration verified with the HPCSA.",
     });
@@ -78,7 +78,7 @@ describe("practitioner approval — the full decision path (mock)", () => {
     const result = await executeTransition(d, {
       current: work,
       toStatus: "DONE",
-      actorId: "ops-1",
+      actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] },
       decision: "REJECTED",
       notes: "Registration number could not be verified.",
     });

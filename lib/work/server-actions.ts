@@ -1,7 +1,7 @@
 "use server";
 
 import { requireOpsUser } from "@/lib/auth/server";
-import { reportError } from "@/lib/observability/report";
+import { reportAuthzDenial, reportError } from "@/lib/observability/report";
 import {
   getAggregateRepository,
   getAuditRepository,
@@ -64,18 +64,28 @@ export async function transitionWorkItem(
       current,
       toStatus: input.toStatus,
       step: input.step,
-      actorId: user.userId,
+      actor: { userId: user.userId, roles: user.roles },
       notes: input.notes,
     },
   );
 
   if (!result.ok) {
-    // Fail-closed outcomes (unsupported transitions, repo failures) are
-    // operationally significant — surface them to monitoring with ids only.
-    reportError(new Error(result.error), {
-      scope: "action:transitionWorkItem",
-      extra: { workItemId: input.item.id, toStatus: input.toStatus },
-    });
+    if (result.denied) {
+      // Expected security signal — separate marker, never an app-failure alarm.
+      reportAuthzDenial({
+        userId: user.userId,
+        permission: "WORK_TRANSITION",
+        scope: "action:transitionWorkItem",
+        subjectId: input.item.id,
+      });
+    } else {
+      // Fail-closed outcomes (unsupported transitions, repo failures) are
+      // operationally significant — surface them to monitoring with ids only.
+      reportError(new Error(result.error), {
+        scope: "action:transitionWorkItem",
+        extra: { workItemId: input.item.id, toStatus: input.toStatus },
+      });
+    }
   }
   return result.ok
     ? { ok: true, persistedDecision: result.persistedDecision }
@@ -125,19 +135,26 @@ export async function decidePractitioner(
       current,
       toStatus: "DONE",
       step: (input.item.step ?? 0) + 1,
-      actorId: user.userId,
+      actor: { userId: user.userId, roles: user.roles },
       notes: input.notes,
       decision: input.decision,
     },
   );
 
   if (!result.ok) {
-    // Fail-closed outcomes (unsupported transitions, repo failures) are
-    // operationally significant — surface them to monitoring with ids only.
-    reportError(new Error(result.error), {
-      scope: "action:decidePractitioner",
-      extra: { workItemId: input.item.id, toStatus: "DONE" },
-    });
+    if (result.denied) {
+      reportAuthzDenial({
+        userId: user.userId,
+        permission: "MANAGE_PRACTITIONERS",
+        scope: "action:decidePractitioner",
+        subjectId: input.item.id,
+      });
+    } else {
+      reportError(new Error(result.error), {
+        scope: "action:decidePractitioner",
+        extra: { workItemId: input.item.id, toStatus: "DONE" },
+      });
+    }
   }
   return result.ok
     ? { ok: true, persistedDecision: result.persistedDecision }

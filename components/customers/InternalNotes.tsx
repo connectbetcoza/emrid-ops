@@ -19,9 +19,12 @@ import { formatDateTime } from "@/lib/format";
 export function InternalNotes({
   subjectId,
   notes,
+  canAdd = true,
 }: {
   subjectId: string;
   notes: OpsNote[];
+  /** Server-computed permission boolean; false hides the composer only. */
+  canAdd?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [pending, startTransition] = useTransition();
@@ -47,6 +50,7 @@ export function InternalNotes({
     <Card className="space-y-4">
       <CardTitle>Internal notes</CardTitle>
 
+      {canAdd ? (
       <div className="space-y-2">
         <label htmlFor="note-composer" className="sr-only">
           Add an internal note
@@ -68,6 +72,7 @@ export function InternalNotes({
           </Button>
         </div>
       </div>
+      ) : null}
 
       {notes.length === 0 ? (
         <EmptyState

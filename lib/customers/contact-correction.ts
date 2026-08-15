@@ -6,6 +6,8 @@ import type {
 } from "@/lib/data/types";
 import { buildOpsNote } from "@/lib/notes/core";
 import { OPS_AUDIT_EVENT } from "@/lib/work/audit";
+import { ensurePermission } from "@/lib/auth/permissions";
+import type { OpsRole } from "@/types";
 
 /**
  * CMS Stage 1 — support contact corrections (pure core + injectable
@@ -99,7 +101,7 @@ export type ContactCorrectionDeps = {
 
 export type ContactCorrectionResult =
   | { ok: true; fields: string[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; denied?: true };
 
 /** Testable orchestrator: validate → fail-closed existence → whitelisted
  * write → PROFILE_UPDATED audit (fields + method only) → support note. */
@@ -108,12 +110,19 @@ export async function executeContactCorrection(
   request: {
     profileId: string;
     input: ContactCorrectionInput;
-    actor: { userId: string; fullName: string };
+    actor: { userId: string; fullName: string; roles: readonly OpsRole[] };
     noteId: string;
     workItemId?: string;
     now: string;
   },
 ): Promise<ContactCorrectionResult> {
+  // Authorization FIRST — before validation, reads, or writes (authoritative).
+  const denied = ensurePermission(
+    { roles: [...request.actor.roles] },
+    "CORRECT_CONTACT_DETAILS",
+  );
+  if (denied) return { ok: false, error: denied, denied: true };
+
   const problem = validateContactCorrection(request.input);
   if (problem) return { ok: false, error: problem };
 

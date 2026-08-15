@@ -25,7 +25,15 @@ const KIND_VARIANT: Record<WorkActionKind, "primary" | "secondary" | "ghost" | "
  * succeeding with a toast + a route refresh (so the queue/workspace re-project),
  * or reverting with an error toast. No transition fails silently.
  */
-export function WorkItemRow({ item }: { item: WorkItem }) {
+export function WorkItemRow({
+  item,
+  canAct = true,
+}: {
+  item: WorkItem;
+  /** Server-computed permission boolean — UI convenience only; the server
+   * action re-enforces regardless. False renders the row read-only. */
+  canAct?: boolean;
+}) {
   const [status, setStatus] = useState<WorkStatus>(item.status);
   const [step, setStep] = useState<number>(item.step ?? 0);
   const [pending, startTransition] = useTransition();
@@ -78,7 +86,8 @@ export function WorkItemRow({ item }: { item: WorkItem }) {
         </div>
         <p className="text-xs text-muted-foreground">{item.nextAction}</p>
         <div className="flex flex-wrap gap-2 pt-0.5">
-          {actions.map((action) => (
+          {canAct &&
+            actions.map((action) => (
             <Button
               key={action.id}
               size="sm"

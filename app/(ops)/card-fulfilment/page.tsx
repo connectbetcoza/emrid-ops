@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/PageHeader";
 import { WorkQueue } from "@/components/work/WorkQueue";
 import { getWorkItemRepository } from "@/lib/data";
+import { requireOpsUser } from "@/lib/auth/server";
+import {
+  WORK_DOMAIN_PERMISSION,
+  hasPermission,
+} from "@/lib/auth/permissions";
 import { recordToWorkItem } from "@/lib/work/record";
 
 export const metadata: Metadata = { title: "Card Fulfilment" };
@@ -13,6 +18,10 @@ export const metadata: Metadata = { title: "Card Fulfilment" };
  * in a later phase; reads come from the Ops work index today.
  */
 export default async function CardFulfilmentPage() {
+  const user = await requireOpsUser();
+  // Bulk transition affordance is permission-gated (UI convenience; the
+  // server action re-enforces per item).
+  const canBulk = hasPermission(user, WORK_DOMAIN_PERMISSION.FULFILMENT);
   const records = await getWorkItemRepository().listByDomain("FULFILMENT");
   const items = records.map(recordToWorkItem);
 
@@ -24,7 +33,7 @@ export default async function CardFulfilmentPage() {
       />
       <WorkQueue
         items={items}
-        primaryBulkLabel="Mark dispatched"
+        primaryBulkLabel={canBulk ? "Mark dispatched" : undefined}
         emptyTitle="Fulfilment queue is clear"
         emptyDescription="No cards are waiting to be encoded or dispatched."
       />
