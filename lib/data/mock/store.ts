@@ -12,6 +12,9 @@ import type {
   Profile,
   ProtectedLivesAggregate,
   OpsNote,
+  ProfileAccessEntry,
+  FamilyInviteSummary,
+  Membership,
 } from "@/lib/data/entities";
 import type { WorkItemRecord } from "@/lib/data/work-record";
 import type { WorkItem } from "@/lib/work/types";
@@ -46,6 +49,12 @@ export type MockStore = {
   practitionerAccess: Map<string, PractitionerAccess[]>;
   /** Internal staff notes keyed by subjectId (Ops-owned; newest first). */
   notes: Map<string, OpsNote[]>;
+  /** Family/shared-access grants keyed by profileId (Patient-owned; Ops reads). */
+  profileAccess: Map<string, ProfileAccessEntry[]>;
+  /** Pending family invites keyed by profileId (token-free summaries). */
+  familyInvites: Map<string, FamilyInviteSummary[]>;
+  /** Memberships keyed by the OWNING account's userId. */
+  memberships: Map<string, Membership>;
 };
 
 /** A pending practitioner application (mirrors the Patient portal's write). */
@@ -220,6 +229,9 @@ function freshStore(): MockStore {
     practices: new Map([[SEED_PRACTICE.practiceId, { ...SEED_PRACTICE }]]),
     practitionerAccess: new Map(),
     notes: new Map(),
+    profileAccess: new Map(),
+    familyInvites: new Map(),
+    memberships: new Map(),
   };
 
   // The pending application's APPROVE_PRACTITIONER work item (the producer
@@ -307,4 +319,7 @@ export function resetStore(): void {
   mockStore.practices = fresh.practices;
   mockStore.practitionerAccess = fresh.practitionerAccess;
   mockStore.notes = fresh.notes;
+  mockStore.profileAccess = fresh.profileAccess;
+  mockStore.familyInvites = fresh.familyInvites;
+  mockStore.memberships = fresh.memberships;
 }

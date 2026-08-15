@@ -3,12 +3,17 @@ import {
   BadgeCheck,
   Stethoscope,
   CreditCard,
+  Download,
   Eye,
   FileText,
+  Mail,
   Nfc,
+  Package,
   Pencil,
   ShieldX,
+  UserMinus,
   UserPlus,
+  Users,
 } from "lucide-react";
 import type { AuditEvent, AuditActorType } from "@/lib/data/entities";
 import type { TimelineEvent } from "@/components/workspace/TimelineArea";
@@ -45,6 +50,26 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon }> = {
   PRACTITIONER_REJECTED: { label: "Practitioner activation declined", icon: ShieldX },
   PRACTITIONER_ONBOARDED: { label: "Practitioner onboarded", icon: Stethoscope },
   PRACTITIONER_UPDATED: { label: "Account details updated", icon: Pencil },
+  // Family / shared access (Patient-owned; labels only — metadata is ignored).
+  FAMILY_INVITE_ISSUED: { label: "Family invite sent", icon: Mail },
+  FAMILY_INVITE_CANCELLED: { label: "Family invite cancelled", icon: Mail },
+  PROFILE_ACCESS_GRANTED: { label: "Profile access granted", icon: Users },
+  PROFILE_ACCESS_REVOKED: { label: "Profile access removed", icon: UserMinus },
+  // Membership (commercial only — never gates emergency access).
+  MEMBERSHIP_PACKAGE_SELECTED: { label: "Membership package selected", icon: Package },
+  // Device lifecycle (patient-controlled).
+  DEVICE_SUSPENDED: { label: "Device suspended", icon: CreditCard },
+  DEVICE_REACTIVATED: { label: "Device reactivated", icon: CreditCard },
+  DEVICE_REVOKED: { label: "Device revoked", icon: ShieldX },
+  // Practitioner consent (patient-owned authority).
+  PRACTITIONER_ACCESS_GRANTED: { label: "Practitioner access granted", icon: Stethoscope },
+  PRACTITIONER_ACCESS_REVOKED: { label: "Practitioner access revoked", icon: ShieldX },
+  PRACTITIONER_PROFILE_VIEWED: { label: "Record viewed by practitioner", icon: Eye },
+  PRACTITIONER_DOCUMENT_DOWNLOADED: { label: "Document downloaded by practitioner", icon: Download },
+  // Practitioner-assisted onboarding + claim.
+  PATIENT_ONBOARDED_BY_PRACTITIONER: { label: "Onboarded by practitioner", icon: UserPlus },
+  ONBOARDING_CLAIM_ISSUED: { label: "Account claim link issued", icon: Mail },
+  ONBOARDING_PROFILE_CLAIMED: { label: "Account claimed by customer", icon: BadgeCheck },
 };
 
 const ACTOR_LABEL: Record<AuditActorType, string> = {

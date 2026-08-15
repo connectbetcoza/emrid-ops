@@ -9,11 +9,14 @@ import type {
   PractitionerDirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
+  FamilyInviteSummary,
   IdentityRecord,
   IdentityVerificationStatus,
+  Membership,
   NewAuditEvent,
   OpsNote,
   Profile,
+  ProfileAccessEntry,
   ProtectedLivesAggregate,
 } from "@/lib/data/entities";
 import type { WorkItemRecord } from "@/lib/data/work-record";
@@ -275,4 +278,22 @@ export interface NoteRepository {
   add(note: OpsNote): Promise<OpsNote>;
   /** Newest first. Single-partition Query — no scan. */
   listForSubject(subjectId: string): Promise<OpsNote[]>;
+}
+
+/**
+ * Family/shared access + membership — READ-ONLY for Ops (the Patient Platform
+ * owns every write; Ops never grants, revokes, invites, or mutates membership).
+ * All reads are bounded partition Queries / point GetItems — no scan, no GSI.
+ */
+export interface FamilyRepository {
+  /** A profile's family/shared-access grants (existence ⇒ active). */
+  listFamilyAccess(profileId: string): Promise<ProfileAccessEntry[]>;
+  /** Pending invites, TOKEN-FREE by construction (see itemToFamilyInviteSummary). */
+  listFamilyInvites(profileId: string): Promise<FamilyInviteSummary[]>;
+  /**
+   * The membership covering a profile: resolve the OWNER grant, then read
+   * `USER#<ownerUserId>/MEMBERSHIP` — two bounded reads. Null when the profile
+   * has no owner grant or the owner has no membership.
+   */
+  getMembershipForProfile(profileId: string): Promise<Membership | null>;
 }

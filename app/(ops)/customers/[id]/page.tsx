@@ -13,6 +13,8 @@ import { ProtectionStatusBadge } from "@/components/customers/ProtectionStatusBa
 import { ActiveWork } from "@/components/customers/ActiveWork";
 import { CardFulfilmentPack } from "@/components/customers/CardFulfilmentPack";
 import { DevicesCard } from "@/components/customers/DevicesCard";
+import { FamilyCard } from "@/components/customers/FamilyCard";
+import { MembershipCard } from "@/components/customers/MembershipCard";
 import { InternalNotes } from "@/components/customers/InternalNotes";
 import {
   PractitionersCard,
@@ -35,6 +37,7 @@ import { auditTimeline } from "@/lib/customers/audit-timeline";
 import {
   getAuditRepository,
   getDeviceRepository,
+  getFamilyRepository,
   getNoteRepository,
   getPractitionerRepository,
   getProfileRepository,
@@ -69,14 +72,26 @@ export default async function CustomerWorkspacePage({
   if (!customer) notFound();
 
   const { status, readiness } = protectionFor(customer);
-  const [records, auditEvents, notes, devices, accessGrants] =
-    await Promise.all([
-      getWorkItemRepository().listForCustomer(customer.id),
-      getAuditRepository().listForProfile(customer.id),
-      getNoteRepository().listForSubject(customer.id),
-      getDeviceRepository().listForCustomer(customer.id),
-      getPractitionerRepository().listAccessForProfile(customer.id),
-    ]);
+  const familyRepo = getFamilyRepository();
+  const [
+    records,
+    auditEvents,
+    notes,
+    devices,
+    accessGrants,
+    familyAccess,
+    familyInvites,
+    membership,
+  ] = await Promise.all([
+    getWorkItemRepository().listForCustomer(customer.id),
+    getAuditRepository().listForProfile(customer.id),
+    getNoteRepository().listForSubject(customer.id),
+    getDeviceRepository().listForCustomer(customer.id),
+    getPractitionerRepository().listAccessForProfile(customer.id),
+    familyRepo.listFamilyAccess(customer.id),
+    familyRepo.listFamilyInvites(customer.id),
+    familyRepo.getMembershipForProfile(customer.id),
+  ]);
   const items = records.map(recordToWorkItem);
   const work = activeWork(items, customer.id);
   const history = workHistory(items, customer.id);
@@ -160,6 +175,15 @@ export default async function CustomerWorkspacePage({
             ) : null}
             <DevicesCard devices={devices} />
             <PractitionersCard practitioners={linkedPractitioners} />
+            <FamilyCard
+              access={familyAccess}
+              invites={familyInvites}
+              now={new Date().toISOString()}
+            />
+            <MembershipCard
+              membership={membership}
+              memberCount={familyAccess.length}
+            />
           </>
         }
         actions={

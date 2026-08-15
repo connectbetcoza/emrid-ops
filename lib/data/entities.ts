@@ -340,3 +340,72 @@ export type OpsNote = {
   body: string;
   createdAt: ISODateString;
 };
+
+// ── Family / shared access + membership (mirrors; Ops is READ-ONLY here) ──────
+
+/** Mirror of the Patient Platform's ProfileAccessRole. */
+export type ProfileAccessRole =
+  | "OWNER"
+  | "GUARDIAN"
+  | "DEPENDENT"
+  | "VIEWER"
+  | "ADMIN";
+
+/**
+ * One family/shared-access grant (mirror of the Patient Platform's
+ * `ProfileAccess`). A grant EXISTS ⇒ it is active — revocation deletes both
+ * projections on the Patient side, so there is no status field.
+ */
+export type ProfileAccessEntry = {
+  accessId: string;
+  profileId: string;
+  userId: string;
+  role: ProfileAccessRole;
+  /** Display-only on the Patient side; authorization keys off userId. */
+  memberEmail?: string;
+  createdAt: ISODateString;
+};
+
+/**
+ * A pending family invite, DELIBERATELY WITHOUT the invite token. The Patient
+ * item stores the raw bearer token; the Ops reconstructor drops it the same
+ * way `itemToProfile` drops the raw id number — the token must never enter
+ * the Ops domain model, logs, or any serialized UI. Pinned by test.
+ */
+export type FamilyInviteSummary = {
+  inviteId: string;
+  profileId: string;
+  inviteEmail: string;
+  role: ProfileAccessRole;
+  invitedByUserId: string;
+  expiresAt: ISODateString;
+  createdAt: ISODateString;
+};
+
+export type MembershipPlan = "INDIVIDUAL" | "SPOUSAL" | "FAMILY" | "PILOT";
+export type BillingCycle = "MONTHLY" | "ANNUAL";
+export type MembershipStatus =
+  | "PENDING_PAYMENT"
+  | "ACTIVE"
+  | "PAST_DUE"
+  | "EXPIRED"
+  | "CANCELLED";
+
+/**
+ * Mirror of the Patient Platform's Membership (one item per OWNING account).
+ * INVARIANT (both products): membership state NEVER affects emergency access —
+ * nothing on the /e path reads it, and Ops never mutates it.
+ */
+export type Membership = {
+  membershipId: string;
+  userId: string;
+  plan: MembershipPlan;
+  status: MembershipStatus;
+  billingCycle?: BillingCycle;
+  /** Server-locked at selection on the Patient side (rands). */
+  priceRands?: number;
+  paymentRef?: string;
+  startedAt: ISODateString;
+  renewalDate?: ISODateString;
+  updatedAt: ISODateString;
+};

@@ -5,7 +5,10 @@ import type {
   PractitionerDirectoryEntry,
   DocumentMetadata,
   EmergencyProfile,
+  FamilyInviteSummary,
+  Membership,
   OpsNote,
+  ProfileAccessEntry,
   Practice,
   Practitioner,
   PractitionerAccess,
@@ -527,5 +530,62 @@ export function itemToOpsNote(item: Record<string, unknown>): OpsNote {
     authorName: String(item.authorName),
     body: String(item.body),
     createdAt: String(item.createdAt),
+  };
+}
+
+// ── Family access / invites / membership (mirror; Ops reads only) ─────────────
+
+export const ACCESS_BY_PROFILE_PREFIX = "ACCESS#USER#"; // SK prefix in PROFILE partition
+export const FAMILY_INVITE_PREFIX_SK = "FAMILY_INVITE#"; // SK prefix in PROFILE partition
+export const MEMBERSHIP_SK = "MEMBERSHIP"; // in the USER partition
+
+export const userPk = (userId: string): string => `USER#${userId}`;
+
+export function itemToProfileAccess(
+  item: Record<string, unknown>,
+): ProfileAccessEntry {
+  return {
+    accessId: String(item.accessId),
+    profileId: String(item.profileId),
+    userId: String(item.userId),
+    role: item.role as ProfileAccessEntry["role"],
+    memberEmail: str(item.memberEmail),
+    createdAt: String(item.createdAt),
+  };
+}
+
+/**
+ * Reconstruct a family invite WITHOUT its bearer token. The stored item
+ * carries the raw token (the Patient owner can re-copy the link); Ops must
+ * never hold it — this reconstructor is the boundary, exactly like
+ * `itemToProfile` and the raw id number. Pinned by test.
+ */
+export function itemToFamilyInviteSummary(
+  item: Record<string, unknown>,
+): FamilyInviteSummary {
+  return {
+    inviteId: String(item.inviteId),
+    profileId: String(item.profileId),
+    inviteEmail: String(item.inviteEmail),
+    role: item.role as FamilyInviteSummary["role"],
+    invitedByUserId: String(item.invitedByUserId),
+    expiresAt: String(item.expiresAt),
+    createdAt: String(item.createdAt),
+  };
+}
+
+export function itemToMembership(item: Record<string, unknown>): Membership {
+  return {
+    membershipId: String(item.membershipId),
+    userId: String(item.userId),
+    plan: item.plan as Membership["plan"],
+    status: item.status as Membership["status"],
+    billingCycle: item.billingCycle as Membership["billingCycle"],
+    priceRands:
+      typeof item.priceRands === "number" ? item.priceRands : undefined,
+    paymentRef: str(item.paymentRef),
+    startedAt: String(item.startedAt),
+    renewalDate: str(item.renewalDate),
+    updatedAt: String(item.updatedAt),
   };
 }
