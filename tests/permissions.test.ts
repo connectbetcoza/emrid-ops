@@ -295,6 +295,7 @@ describe("mutating-action wiring guard", () => {
       "lib/practitioners/server-actions.ts",
       "lib/customers/support-actions.ts",
       "lib/customers/contact-actions.ts",
+      "lib/customers/device-actions.ts",
     ];
     const root = process.cwd();
     for (const file of actionFiles) {
@@ -325,6 +326,7 @@ describe("mutating-action wiring guard", () => {
       [
         "lib/auth/actions.ts", // session establishment — pre-authorization by nature
         "lib/customers/contact-actions.ts",
+        "lib/customers/device-actions.ts",
         "lib/customers/support-actions.ts",
         "lib/practitioners/server-actions.ts",
         "lib/work/server-actions.ts",

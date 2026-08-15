@@ -120,6 +120,23 @@ export interface DeviceRepository {
   getByToken(token: string): Promise<Device | null>;
   /** Issue-and-activate the customer's card (idempotent activation). */
   markCardActive(customerId: string): Promise<Device>;
+  /**
+   * Assisted device support (CMS Stage 2a) — conditional dual-item status
+   * transitions mirroring the Patient legal-transition map. Conditions are
+   * enforced in the write (racing patient self-service fails cleanly):
+   * suspend only from ACTIVE; reactivate only from SUSPENDED; revoke from any
+   * non-terminal state. These writes NEVER touch the aggregate — the stream
+   * producer owns every device-driven Protected crossing (2b).
+   */
+  suspendDevice(customerId: string, deviceId: string): Promise<Device>;
+  reactivateDevice(customerId: string, deviceId: string): Promise<Device>;
+  revokeDevice(customerId: string, deviceId: string): Promise<Device>;
+  /**
+   * Issue a replacement card: a fresh PENDING device (canonical dvtk_ token +
+   * activation code) dual-written — the stream producer then creates the
+   * ISSUE_CARD work automatically, joining the normal fulfilment flow.
+   */
+  issueReplacementDevice(customerId: string): Promise<Device>;
 }
 
 export type WorkTransitionInput = {

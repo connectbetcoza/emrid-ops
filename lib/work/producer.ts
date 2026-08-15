@@ -11,6 +11,7 @@ import type {
 import {
   buildProducedWorkItem,
   cardCompletionForChange,
+  deviceCrossingCandidate,
   directoryRefreshTarget,
   practitionerRefreshTarget,
   producedWorkItemId,
@@ -82,50 +83,39 @@ async function completeCardWork(
   deps: ProducerDeps,
   completion: CardCompletion,
 ): Promise<ProduceResult> {
-  const workItemId = producedWorkItemId({
-    workType: "ISSUE_CARD",
-    customerId: completion.customerId,
-  });
-
+  // Match by TYPE + non-terminal STATUS, not by id: card work may carry the
+  // legacy `<customerId>-card` id or a device-scoped `<deviceId>-card` id
+  // (replacements). At most one card flow is active per customer at a time;
+  // absence of a non-terminal item is the replay/already-reconciled marker.
   const items = await deps.workRepo.listForCustomer(completion.customerId);
-  const current = items.find((w) => w.workItemId === workItemId);
+  const cardItems = items.filter((w) => w.workType === "ISSUE_CARD");
+  const current = cardItems.find(
+    (w) => w.status !== "DONE" && w.status !== "CANCELLED",
+  );
   if (!current) {
-    return { created: false, completed: false, workItemId, reason: "missing" };
+    const workItemId =
+      cardItems[0]?.workItemId ??
+      producedWorkItemId({
+        workType: "ISSUE_CARD",
+        customerId: completion.customerId,
+        deviceId: completion.deviceId,
+      });
+    return {
+      created: false,
+      completed: false,
+      workItemId,
+      reason: cardItems.length > 0 ? "already-done" : "missing",
+    };
   }
-  if (current.status === "DONE" || current.status === "CANCELLED") {
-    // Replay (or already reconciled) — the terminal status is the dedupe marker.
-    return { created: false, completed: false, workItemId, reason: "already-done" };
-  }
+  const workItemId = current.workItemId;
 
   // 1. Complete the work item (dual projection rewrite) — the durable marker.
   await deps.workRepo.transition(current, { toStatus: "DONE" });
 
-  // 2. Protected-boundary crossing, exactly once. The card facet flipped
-  //    false → true UNLESS another device was already ACTIVE.
-  const [profile, emergency, devices] = await Promise.all([
-    deps.profileRepo.getProfile(completion.customerId),
-    deps.emergencyRepo.getEmergencyProfile(completion.customerId),
-    deps.deviceRepo.listForCustomer(completion.customerId),
-  ]);
-  const identityVerified = profile?.identityVerificationStatus === "VERIFIED";
-  const emergencyPresent = hasEmergencyInfo(emergency);
-  const otherCardActive = devices.some(
-    (d) => d.deviceId !== completion.deviceId && d.status === "ACTIVE",
-  );
-  const before = protectionStatusFromFacets({
-    identityVerified,
-    cardActive: otherCardActive,
-    emergencyPresent,
-  });
-  const after = protectionStatusFromFacets({
-    identityVerified,
-    cardActive: true,
-    emergencyPresent,
-  });
-  const delta = protectedLivesDelta(before, after);
-  if (crossesProtectedBoundary(delta)) {
-    await deps.aggregateRepo.adjustProtectedLives(delta);
-  }
+  // 2. NOTE (2b ownership model): the Protected-boundary crossing is NOT
+  //    applied here — applyDeviceCrossing owns EVERY device-driven crossing
+  //    (both directions) on the same stream event, deduped via the directory
+  //    entry. This function only completes the work item and audits.
 
   // 3. Audit the system-observed completion (ids only; the activation itself is
   //    the Patient Platform's own audit fact).
@@ -138,6 +128,48 @@ async function completeCardWork(
   });
 
   return { created: false, completed: true, workItemId };
+}
+
+/**
+ * Apply the Protected-boundary crossing a device status change implies —
+ * the SINGLE owner of device-driven aggregate movement, both directions
+ * (2b): PENDING→ACTIVE, SUSPENDED→ACTIVE, ACTIVE→SUSPENDED, ACTIVE→REVOKED,
+ * whether the mutation came from the Patient app or an Ops assisted action.
+ *
+ * BEFORE comes from the customer's directory entry (producer-maintained and
+ * refreshed AFTER this runs), AFTER from current truth. Replay-safe by
+ * construction: a redelivered event finds the directory already reflecting
+ * the new state, so before === after and the aggregate never moves twice.
+ * Multi-device safety falls out of truth-based facets: any other ACTIVE
+ * device keeps the customer PROTECTED, so no delta.
+ */
+export async function applyDeviceCrossing(
+  deps: ProducerDeps,
+  customerId: string,
+): Promise<void> {
+  const entry = await deps.directoryRepo.getEntry(customerId);
+  // Pre-backfill customers have no entry — the backfill script guarantees
+  // entries for all real profiles; without a "before" record a delta cannot
+  // be applied safely, so skip (reconcile-report remains the safety net).
+  if (!entry) return;
+  const before = entry.protectionStatus;
+
+  const [profile, emergency, devices] = await Promise.all([
+    deps.profileRepo.getProfile(customerId),
+    deps.emergencyRepo.getEmergencyProfile(customerId),
+    deps.deviceRepo.listForCustomer(customerId),
+  ]);
+  if (!profile) return;
+  const after = protectionStatusFromFacets({
+    identityVerified: profile.identityVerificationStatus === "VERIFIED",
+    cardActive: devices.some((d) => d.status === "ACTIVE"),
+    emergencyPresent: hasEmergencyInfo(emergency),
+  });
+
+  const delta = protectedLivesDelta(before, after);
+  if (crossesProtectedBoundary(delta)) {
+    await deps.aggregateRepo.adjustProtectedLives(delta);
+  }
 }
 
 /**
@@ -255,6 +287,13 @@ export async function produceFromChange(
   // (profile, emergency, device, work, audit) — AFTER the work action so the
   // entry reflects it. Runs even for "no-op" work changes (e.g. an emergency
   // update changes readiness without implying work).
+  // Device-driven Protected-boundary crossings — BEFORE the directory
+  // refresh, which persists the new protection status as the next "before".
+  const crossingCustomer = deviceCrossingCandidate(change);
+  if (crossingCustomer) {
+    await applyDeviceCrossing(deps, crossingCustomer);
+  }
+
   const refreshTarget = directoryRefreshTarget(change);
   if (refreshTarget) {
     await refreshDirectoryEntry(deps, refreshTarget, now);

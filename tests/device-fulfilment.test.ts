@@ -14,6 +14,8 @@ import {
 import { executeTransition } from "@/lib/work/transition-service";
 import { workActions } from "@/lib/work/actions";
 import { protectionStatus, readinessForCustomer } from "@/lib/customers/readiness";
+import { applyDeviceCrossing } from "@/lib/work/producer";
+import { getDirectoryRepository } from "@/lib/data";
 import { getCustomerState } from "@/lib/customers/state";
 import type { DynamoDeps } from "@/lib/data/aws/client";
 import type { WorkItemRecord } from "@/lib/data/work-record";
@@ -120,7 +122,21 @@ describe("First Protected Life (mock): approve identity then fulfil card → Pro
     const cardWork = (await deps.workRepo.listByDomain("FULFILMENT")).find(
       (w) => w.customerId === id,
     )!;
+    // BEFORE state as the directory recorded it (IN_PROGRESS — no card yet).
+    const entryBefore = await getDirectoryRepository().getEntry(id);
     await executeTransition(deps, { current: cardWork, toStatus: "DONE", actor: { userId: "ops-1", roles: ["OPERATIONS_ADMIN"] } });
+    // 2b ownership: the device→ACTIVE write STREAMS to the producer, which owns
+    // the crossing. Simulate that step with the recorded before-entry.
+    await applyDeviceCrossing(
+      {
+        ...deps,
+        directoryRepo: {
+          ...getDirectoryRepository(),
+          getEntry: async () => entryBefore,
+        },
+      },
+      id,
+    );
 
     // Step 11 — Protected.
     const customer = (await getCustomerState(id))!;

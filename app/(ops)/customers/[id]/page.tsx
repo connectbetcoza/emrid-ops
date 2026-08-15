@@ -13,6 +13,7 @@ import { ProtectionStatusBadge } from "@/components/customers/ProtectionStatusBa
 import { ActiveWork } from "@/components/customers/ActiveWork";
 import { CardFulfilmentPack } from "@/components/customers/CardFulfilmentPack";
 import { ContactCorrectionForm } from "@/components/customers/ContactCorrectionForm";
+import { DeviceAssistPanel } from "@/components/customers/DeviceAssistPanel";
 import { DevicesCard } from "@/components/customers/DevicesCard";
 import { FamilyCard } from "@/components/customers/FamilyCard";
 import { MembershipCard } from "@/components/customers/MembershipCard";
@@ -84,6 +85,8 @@ export default async function CustomerWorkspacePage({
   const canNotes = hasPermission(user, "ADD_NOTES");
   const canSupport = hasPermission(user, "RESOLVE_SUPPORT");
   const canCorrect = hasPermission(user, "CORRECT_CONTACT_DETAILS");
+  const canAssistDevices = hasPermission(user, "ASSIST_DEVICES");
+  const canRevokeDevices = hasPermission(user, "REVOKE_DEVICES");
   const actionableDomains = WORK_DOMAINS.filter((d) =>
     hasPermission(user, WORK_DOMAIN_PERMISSION[d]),
   );
@@ -211,6 +214,18 @@ export default async function CustomerWorkspacePage({
             {canSupport ? (
               <ActionPanel title="Customer support">
                 <SupportQueryPanel customerId={customer.id} />
+              </ActionPanel>
+            ) : null}
+            {canAssistDevices && devices.length > 0 ? (
+              <ActionPanel title="Device assistance">
+                <DeviceAssistPanel
+                  customerId={customer.id}
+                  devices={devices.map((d) => ({
+                    deviceId: d.deviceId,
+                    status: d.status,
+                  }))}
+                  canRevoke={canRevokeDevices}
+                />
               </ActionPanel>
             ) : null}
             {canCorrect ? (

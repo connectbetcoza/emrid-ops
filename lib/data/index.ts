@@ -86,7 +86,7 @@ export function getWorkItemRepository(): WorkItemRepository {
 }
 
 export function getDeviceRepository(): DeviceRepository {
-  return pickMigrated(mockDevice, awsDevice);
+  return pickMigrated<DeviceRepository>(mockDevice, awsDevice);
 }
 
 export function getEmergencyProfileRepository(): EmergencyProfileRepository {

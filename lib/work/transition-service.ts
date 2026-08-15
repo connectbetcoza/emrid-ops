@@ -91,8 +91,8 @@ export async function executeTransition(
   const cid = input.current.customerId;
   let eventType: string = OPS_AUDIT_EVENT.WORK_TRANSITION;
 
-  if (plan.kind === "IDENTITY_DECISION" || plan.kind === "CARD_ACTIVATION") {
-    // Facets BEFORE the write (the part being changed has its old value).
+  if (plan.kind === "IDENTITY_DECISION") {
+    // Facets BEFORE the write (identity is the facet being changed).
     const [profile, devices, emergency] = await Promise.all([
       deps.profileRepo.getProfile(cid),
       deps.deviceRepo.listForCustomer(cid),
@@ -108,37 +108,35 @@ export async function executeTransition(
       emergencyPresent,
     });
 
-    // Apply the write.
-    if (plan.kind === "IDENTITY_DECISION") {
-      await deps.profileRepo.setIdentityDecision(cid, {
-        decision: plan.decision,
-        notes: input.notes,
-        decidedByOpsUserId: input.actor.userId,
-      });
-      eventType =
-        plan.decision === "VERIFIED"
-          ? OPS_AUDIT_EVENT.IDENTITY_VERIFIED
-          : OPS_AUDIT_EVENT.IDENTITY_REJECTED;
-    } else {
-      await deps.deviceRepo.markCardActive(cid);
-      eventType = OPS_AUDIT_EVENT.CARD_ACTIVATED;
-    }
+    await deps.profileRepo.setIdentityDecision(cid, {
+      decision: plan.decision,
+      notes: input.notes,
+      decidedByOpsUserId: input.actor.userId,
+    });
+    eventType =
+      plan.decision === "VERIFIED"
+        ? OPS_AUDIT_EVENT.IDENTITY_VERIFIED
+        : OPS_AUDIT_EVENT.IDENTITY_REJECTED;
 
-    // Facets AFTER the write — only the changed facet differs.
     const after = protectionStatusFromFacets({
-      identityVerified:
-        plan.kind === "IDENTITY_DECISION"
-          ? plan.decision === "VERIFIED"
-          : identityVerified,
-      cardActive: plan.kind === "CARD_ACTIVATION" ? true : cardActive,
+      identityVerified: plan.decision === "VERIFIED",
+      cardActive,
       emergencyPresent,
     });
 
-    // 2b. Maintain the aggregate ONLY on a Protected-boundary crossing.
+    // Identity-driven crossings are app-side (a Profile write does not carry
+    // device crossing semantics on the stream); device-driven crossings are
+    // owned EXCLUSIVELY by the producer's applyDeviceCrossing (2b model).
     const delta = protectedLivesDelta(before, after);
     if (crossesProtectedBoundary(delta)) {
       await deps.aggregateRepo.adjustProtectedLives(delta);
     }
+  } else if (plan.kind === "CARD_ACTIVATION") {
+    // Device write ONLY — the device mutation streams to the producer, which
+    // owns the resulting Protected-boundary crossing (2b ownership model).
+    // Adjusting here as well would double-count.
+    await deps.deviceRepo.markCardActive(cid);
+    eventType = OPS_AUDIT_EVENT.CARD_ACTIVATED;
   } else if (plan.kind === "PRACTITIONER_DECISION") {
     // Record the decision on the practitioner (status + statusNotes) — the
     // write the practitioner portal reads back. Practitioners are not

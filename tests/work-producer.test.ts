@@ -35,6 +35,32 @@ function producerDeps() {
   };
 }
 
+/**
+ * Producer deps with a STATEFUL directory (the real Dynamo behaviour: getEntry
+ * returns the last upserted entry, not a recompute) — required to exercise the
+ * 2b crossing model, whose replay-idempotency rests on the stored before-state.
+ * Seeds the customer's pre-event entry from current truth.
+ */
+async function producerDepsWithStatefulDirectory(customerId: string) {
+  const base = producerDeps();
+  const stored = new Map<string, NonNullable<Awaited<ReturnType<MockDirectoryRepository["getEntry"]>>>>();
+  const seed = await base.directoryRepo.getEntry(customerId);
+  if (seed) stored.set(customerId, seed);
+  const directoryRepo: import("@/lib/data/types").DirectoryRepository = {
+    ...base.directoryRepo,
+    getEntry: async (id: string) => stored.get(id) ?? null,
+    upsertEntry: async (entry) => {
+      stored.set(entry.profileId, entry);
+      return entry;
+    },
+    listCustomers: async () => [...stored.values()],
+    listPractitioners: base.directoryRepo.listPractitioners.bind(base.directoryRepo),
+    upsertPractitionerEntry: base.directoryRepo.upsertPractitionerEntry.bind(base.directoryRepo),
+    removePractitionerEntry: base.directoryRepo.removePractitionerEntry.bind(base.directoryRepo),
+  };
+  return { ...base, directoryRepo };
+}
+
 beforeEach(() => resetStore());
 
 // ── Pure intent mapping ───────────────────────────────────────────────────────
@@ -346,7 +372,9 @@ describe("device PENDING→ACTIVE completes the ISSUE_CARD work (state sync)", (
   });
 
   it("increments Protected Lives exactly once, and a replay does not re-increment", async () => {
-    const deps = producerDeps();
+    // Stateful directory: the entry recorded BEFORE the event carries the
+    // IN_PROGRESS status the crossing computes against (2b model).
+    const deps = await producerDepsWithStatefulDirectory(id);
     const before = (await deps.aggregateRepo.getProtectedLives()).protectedCount;
     activateStoreDevice(id);
 

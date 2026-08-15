@@ -20386,6 +20386,8 @@ function itemToProfile(item) {
     lastName: String(item.lastName),
     dateOfBirth: String(item.dateOfBirth),
     photoUrl: str(item.photoUrl),
+    contactEmail: str(item.contactEmail),
+    contactMobile: str(item.contactMobile),
     status: item.status,
     verificationLevel: item.verificationLevel,
     idType: item.idType,
@@ -20666,6 +20668,65 @@ function itemToPractitionerAccess(item) {
     status: item.status
   };
 }
+var OPSNOTE_PREFIX_SK = "OPSNOTE#";
+var opsNoteSk = (createdAt, noteId) => `${OPSNOTE_PREFIX_SK}${createdAt}#${noteId}`;
+function opsNoteItem(note) {
+  return {
+    PK: profilePk(note.subjectId),
+    SK: opsNoteSk(note.createdAt, note.noteId),
+    type: "OPS_NOTE",
+    ...note
+  };
+}
+function itemToOpsNote(item) {
+  return {
+    noteId: String(item.noteId),
+    subjectId: String(item.subjectId),
+    authorId: String(item.authorId),
+    authorName: String(item.authorName),
+    body: String(item.body),
+    createdAt: String(item.createdAt)
+  };
+}
+var ACCESS_BY_PROFILE_PREFIX = "ACCESS#USER#";
+var FAMILY_INVITE_PREFIX_SK = "FAMILY_INVITE#";
+var MEMBERSHIP_SK = "MEMBERSHIP";
+var userPk = (userId) => `USER#${userId}`;
+function itemToProfileAccess(item) {
+  return {
+    accessId: String(item.accessId),
+    profileId: String(item.profileId),
+    userId: String(item.userId),
+    role: item.role,
+    memberEmail: str(item.memberEmail),
+    createdAt: String(item.createdAt)
+  };
+}
+function itemToFamilyInviteSummary(item) {
+  return {
+    inviteId: String(item.inviteId),
+    profileId: String(item.profileId),
+    inviteEmail: String(item.inviteEmail),
+    role: item.role,
+    invitedByUserId: String(item.invitedByUserId),
+    expiresAt: String(item.expiresAt),
+    createdAt: String(item.createdAt)
+  };
+}
+function itemToMembership(item) {
+  return {
+    membershipId: String(item.membershipId),
+    userId: String(item.userId),
+    plan: item.plan,
+    status: item.status,
+    billingCycle: item.billingCycle,
+    priceRands: typeof item.priceRands === "number" ? item.priceRands : void 0,
+    paymentRef: str(item.paymentRef),
+    startedAt: String(item.startedAt),
+    renewalDate: str(item.renewalDate),
+    updatedAt: String(item.updatedAt)
+  };
+}
 
 // lib/work/producer-core.ts
 var str2 = (v) => typeof v === "string" ? v : void 0;
@@ -20675,6 +20736,9 @@ var ID_SUFFIX = {
   APPROVE_PRACTITIONER: "practitioner"
 };
 function producedWorkItemId(intent) {
+  if (intent.workType === "ISSUE_CARD" && intent.deviceId) {
+    return `${intent.deviceId}-card`;
+  }
   return `${intent.customerId}-${ID_SUFFIX[intent.workType]}`;
 }
 function workIntentForChange(change) {
@@ -20693,8 +20757,9 @@ function workIntentForChange(change) {
     const status = str2(img.status);
     const previous = str2(change.oldImage?.status);
     const customerId = str2(img.profileId);
+    const deviceId = str2(img.deviceId);
     if (status === "PENDING" && previous !== "PENDING" && customerId) {
-      return { workType: "ISSUE_CARD", customerId };
+      return { workType: "ISSUE_CARD", customerId, deviceId };
     }
     return null;
   }
@@ -20712,6 +20777,15 @@ function workIntentForChange(change) {
     return null;
   }
   return null;
+}
+function deviceCrossingCandidate(change) {
+  if (change.keys.SK !== DEVICE_SK) return null;
+  const img = change.newImage;
+  if (!img) return null;
+  const status = str2(img.status);
+  const previous = str2(change.oldImage?.status);
+  if (status === previous) return null;
+  return str2(img.profileId) ?? null;
 }
 function cardCompletionForChange(change) {
   if (change.keys.SK !== DEVICE_SK) return null;
@@ -20921,7 +20995,10 @@ function customerFromState(input) {
   return {
     id: profile.profileId,
     fullName: `${profile.firstName} ${profile.lastName}`.trim(),
-    email: "",
+    emrid: profile.emrid,
+    accountStatus: profile.status,
+    email: profile.contactEmail ?? "",
+    mobile: profile.contactMobile,
     joinedAt: profile.createdAt,
     profileComplete: isProfileComplete(profile),
     identityStatus: TO_IDENTITY_STATUS[profile.identityVerificationStatus ?? "UNVERIFIED"] ?? "UNVERIFIED",
@@ -20977,7 +21054,13 @@ var OPS_AUDIT_EVENT = {
   PRACTITIONER_APPROVED: "PRACTITIONER_APPROVED",
   PRACTITIONER_REJECTED: "PRACTITIONER_REJECTED",
   PRACTITIONER_ONBOARDED: "PRACTITIONER_ONBOARDED",
-  PRACTITIONER_UPDATED: "PRACTITIONER_UPDATED"
+  PRACTITIONER_UPDATED: "PRACTITIONER_UPDATED",
+  /**
+   * CMS Stage 1: support contact corrections reuse the EXISTING Patient event
+   * (already in the Patient union + labels — no cross-product change). The OPS
+   * actorType distinguishes it from the customer's own edits.
+   */
+  PROFILE_UPDATED: "PROFILE_UPDATED"
 };
 
 // lib/data/ids.ts
@@ -20986,43 +21069,26 @@ var newAuditId = () => crypto.randomUUID();
 
 // lib/work/producer.ts
 async function completeCardWork(deps, completion) {
-  const workItemId = producedWorkItemId({
-    workType: "ISSUE_CARD",
-    customerId: completion.customerId
-  });
   const items = await deps.workRepo.listForCustomer(completion.customerId);
-  const current = items.find((w) => w.workItemId === workItemId);
-  if (!current) {
-    return { created: false, completed: false, workItemId, reason: "missing" };
-  }
-  if (current.status === "DONE" || current.status === "CANCELLED") {
-    return { created: false, completed: false, workItemId, reason: "already-done" };
-  }
-  await deps.workRepo.transition(current, { toStatus: "DONE" });
-  const [profile, emergency, devices] = await Promise.all([
-    deps.profileRepo.getProfile(completion.customerId),
-    deps.emergencyRepo.getEmergencyProfile(completion.customerId),
-    deps.deviceRepo.listForCustomer(completion.customerId)
-  ]);
-  const identityVerified = profile?.identityVerificationStatus === "VERIFIED";
-  const emergencyPresent = hasEmergencyInfo(emergency);
-  const otherCardActive = devices.some(
-    (d) => d.deviceId !== completion.deviceId && d.status === "ACTIVE"
+  const cardItems = items.filter((w) => w.workType === "ISSUE_CARD");
+  const current = cardItems.find(
+    (w) => w.status !== "DONE" && w.status !== "CANCELLED"
   );
-  const before = protectionStatusFromFacets({
-    identityVerified,
-    cardActive: otherCardActive,
-    emergencyPresent
-  });
-  const after = protectionStatusFromFacets({
-    identityVerified,
-    cardActive: true,
-    emergencyPresent
-  });
-  const delta = protectedLivesDelta(before, after);
-  if (crossesProtectedBoundary(delta)) {
-    await deps.aggregateRepo.adjustProtectedLives(delta);
+  if (!current) {
+    const workItemId2 = cardItems[0]?.workItemId ?? producedWorkItemId({
+      workType: "ISSUE_CARD",
+      customerId: completion.customerId,
+      deviceId: completion.deviceId
+    });
+    return {
+      created: false,
+      completed: false,
+      workItemId: workItemId2,
+      reason: cardItems.length > 0 ? "already-done" : "missing"
+    };
   }
+  const workItemId = current.workItemId;
+  await deps.workRepo.transition(current, { toStatus: "DONE" });
   await deps.auditRepo.record({
     eventType: OPS_AUDIT_EVENT.WORK_TRANSITION,
     actorType: "SYSTEM",
@@ -21031,6 +21097,26 @@ async function completeCardWork(deps, completion) {
     metadata: { workItemId, toStatus: "DONE", trigger: "CARD_ACTIVATED" }
   });
   return { created: false, completed: true, workItemId };
+}
+async function applyDeviceCrossing(deps, customerId) {
+  const entry = await deps.directoryRepo.getEntry(customerId);
+  if (!entry) return;
+  const before = entry.protectionStatus;
+  const [profile, emergency, devices] = await Promise.all([
+    deps.profileRepo.getProfile(customerId),
+    deps.emergencyRepo.getEmergencyProfile(customerId),
+    deps.deviceRepo.listForCustomer(customerId)
+  ]);
+  if (!profile) return;
+  const after = protectionStatusFromFacets({
+    identityVerified: profile.identityVerificationStatus === "VERIFIED",
+    cardActive: devices.some((d) => d.status === "ACTIVE"),
+    emergencyPresent: hasEmergencyInfo(emergency)
+  });
+  const delta = protectedLivesDelta(before, after);
+  if (crossesProtectedBoundary(delta)) {
+    await deps.aggregateRepo.adjustProtectedLives(delta);
+  }
 }
 async function refreshDirectoryEntry(deps, profileId, now) {
   const [profile, emergency, devices, workRecords, auditEvents] = await Promise.all([
@@ -21093,6 +21179,10 @@ async function applyWorkAction(deps, change, now) {
 }
 async function produceFromChange(deps, change, now = nowIso()) {
   const result = await applyWorkAction(deps, change, now);
+  const crossingCustomer = deviceCrossingCandidate(change);
+  if (crossingCustomer) {
+    await applyDeviceCrossing(deps, crossingCustomer);
+  }
   const refreshTarget = directoryRefreshTarget(change);
   if (refreshTarget) {
     await refreshDirectoryEntry(deps, refreshTarget, now);
@@ -21114,7 +21204,7 @@ async function produceFromStreamRecords(deps, records, now = nowIso()) {
 }
 
 // lib/data/index.ts
-var import_server_only11 = __toESM(require_server_only_stub());
+var import_server_only13 = __toESM(require_server_only_stub());
 
 // lib/config/index.ts
 function normalize(value) {
@@ -21285,7 +21375,6 @@ var MOCK_CUSTOMERS = [
     fullName: "Thandi Mokoena",
     email: "thandi.mokoena@example.co.za",
     mobile: "+27 82 555 0141",
-    location: "Johannesburg",
     joinedAt: "2026-01-12T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "PENDING",
@@ -21298,7 +21387,6 @@ var MOCK_CUSTOMERS = [
     fullName: "Sipho Dlamini",
     email: "sipho.dlamini@example.co.za",
     mobile: "+27 83 555 0142",
-    location: "Durban",
     joinedAt: "2026-02-03T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21310,7 +21398,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2043",
     fullName: "Aisha Patel",
     email: "aisha.patel@example.co.za",
-    location: "Cape Town",
     joinedAt: "2025-11-20T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21322,7 +21409,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2044",
     fullName: "Grace Mahlangu",
     email: "grace.mahlangu@example.co.za",
-    location: "Pretoria",
     joinedAt: "2026-06-25T08:00:00.000Z",
     profileComplete: false,
     identityStatus: "UNVERIFIED",
@@ -21334,7 +21420,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2045",
     fullName: "Bongani Zulu",
     email: "bongani.zulu@example.co.za",
-    location: "Soweto",
     joinedAt: "2026-03-15T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "PENDING",
@@ -21346,7 +21431,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2046",
     fullName: "Fatima Adams",
     email: "fatima.adams@example.co.za",
-    location: "Cape Town",
     joinedAt: "2025-10-08T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21358,7 +21442,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2047",
     fullName: "Themba Ndlovu",
     email: "themba.ndlovu@example.co.za",
-    location: "Bloemfontein",
     joinedAt: "2026-06-28T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "UNVERIFIED",
@@ -21370,7 +21453,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2048",
     fullName: "Kabelo Sithole",
     email: "kabelo.sithole@example.co.za",
-    location: "Polokwane",
     joinedAt: "2026-04-22T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21382,7 +21464,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2049",
     fullName: "Lindiwe Khumalo",
     email: "lindiwe.khumalo@example.co.za",
-    location: "Durban",
     joinedAt: "2025-09-30T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21394,7 +21475,6 @@ var MOCK_CUSTOMERS = [
     id: "CUS-2050",
     fullName: "Andile Mbeki",
     email: "andile.mbeki@example.co.za",
-    location: "Gqeberha",
     joinedAt: "2026-05-18T08:00:00.000Z",
     profileComplete: true,
     identityStatus: "VERIFIED",
@@ -21538,7 +21618,11 @@ function freshStore() {
     protectedLives: seedProtectedLives(),
     practitioners: /* @__PURE__ */ new Map([[SEED_PRACTITIONER.practitionerId, { ...SEED_PRACTITIONER }]]),
     practices: /* @__PURE__ */ new Map([[SEED_PRACTICE.practiceId, { ...SEED_PRACTICE }]]),
-    practitionerAccess: /* @__PURE__ */ new Map()
+    practitionerAccess: /* @__PURE__ */ new Map(),
+    notes: /* @__PURE__ */ new Map(),
+    profileAccess: /* @__PURE__ */ new Map(),
+    familyInvites: /* @__PURE__ */ new Map(),
+    memberships: /* @__PURE__ */ new Map()
   };
   store.workItems.set("prac-9001-practitioner", {
     workItemId: "prac-9001-practitioner",
@@ -21600,6 +21684,18 @@ var MockProfileRepository = class {
   }
   async listByIdentityStatus(status) {
     return [...mockStore.profiles.values()].filter((p) => p.status !== "DELETED" && p.identityVerificationStatus === status).map((p) => ({ ...p }));
+  }
+  async updateContactDetails(profileId, input) {
+    const existing = mockStore.profiles.get(profileId);
+    if (!existing) throw new Error(`Profile not found: ${profileId}`);
+    const updated = {
+      ...existing,
+      ...input.contactEmail !== void 0 && { contactEmail: input.contactEmail },
+      ...input.contactMobile !== void 0 && { contactMobile: input.contactMobile },
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    mockStore.profiles.set(profileId, updated);
+    return { ...updated };
   }
   async getIdentity(profileId) {
     const i = mockStore.identities.get(profileId);
@@ -21682,6 +21778,23 @@ var MockWorkItemRepository = class {
   }
 };
 
+// lib/devices/token.ts
+var ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function randomString(length) {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += ALPHABET[bytes[i] % ALPHABET.length];
+  }
+  return out;
+}
+function generateDeviceToken() {
+  return `dvtk_${randomString(28)}`;
+}
+function generateActivationCode() {
+  return `${randomString(4)}-${randomString(4)}`;
+}
+
 // lib/data/mock/device-repository.ts
 var MockDeviceRepository = class {
   async listForCustomer(customerId) {
@@ -21703,6 +21816,51 @@ var MockDeviceRepository = class {
       token: crypto.randomUUID(),
       issuedAt: ts,
       activatedAt: ts,
+      updatedAt: ts
+    };
+    mockStore.devices.set(device.deviceId, device);
+    return { ...device };
+  }
+  transitionStatus(customerId, deviceId, to, allowedFrom) {
+    const existing = mockStore.devices.get(deviceId);
+    if (!existing || existing.profileId !== customerId) {
+      throw new Error(`Device not found: ${deviceId}`);
+    }
+    if (!allowedFrom.includes(existing.status)) {
+      throw new Error(
+        `Device is ${existing.status} \u2014 this action requires ${allowedFrom.join("/")}.`
+      );
+    }
+    const updated = {
+      ...existing,
+      status: to,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    mockStore.devices.set(deviceId, updated);
+    return { ...updated };
+  }
+  async suspendDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "SUSPENDED", ["ACTIVE"]);
+  }
+  async reactivateDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "ACTIVE", ["SUSPENDED"]);
+  }
+  async revokeDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "REVOKED", [
+      "PENDING",
+      "ACTIVE",
+      "SUSPENDED"
+    ]);
+  }
+  async issueReplacementDevice(customerId) {
+    const ts = (/* @__PURE__ */ new Date()).toISOString();
+    const device = {
+      deviceId: `device_${crypto.randomUUID()}`,
+      profileId: customerId,
+      status: "PENDING",
+      token: generateDeviceToken(),
+      activationCode: generateActivationCode(),
+      issuedAt: ts,
       updatedAt: ts
     };
     mockStore.devices.set(device.deviceId, device);
@@ -21799,6 +21957,9 @@ var MockPractitionerRepository = class {
       ...a
     }));
   }
+  async listAccessForProfile(profileId) {
+    return [...mockStore.practitionerAccess.values()].flat().filter((a) => a.profileId === profileId).map((a) => ({ ...a }));
+  }
   async createPractice(input) {
     const existing = mockStore.practices.get(input.practiceId);
     if (existing) return { ...existing };
@@ -21891,6 +22052,39 @@ var MockPractitionerRepository = class {
   }
 };
 
+// lib/data/mock/note-repository.ts
+var MockNoteRepository = class {
+  async add(note) {
+    const existing = mockStore.notes.get(note.subjectId) ?? [];
+    if (existing.some((n) => n.noteId === note.noteId)) {
+      return { ...existing.find((n) => n.noteId === note.noteId) };
+    }
+    mockStore.notes.set(note.subjectId, [{ ...note }, ...existing]);
+    return { ...note };
+  }
+  async listForSubject(subjectId) {
+    return (mockStore.notes.get(subjectId) ?? []).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((n) => ({ ...n }));
+  }
+};
+
+// lib/data/mock/family-repository.ts
+var MockFamilyRepository = class {
+  async listFamilyAccess(profileId) {
+    return (mockStore.profileAccess.get(profileId) ?? []).map((a) => ({ ...a }));
+  }
+  async listFamilyInvites(profileId) {
+    return (mockStore.familyInvites.get(profileId) ?? []).map((i) => ({ ...i }));
+  }
+  async getMembershipForProfile(profileId) {
+    const owner = (mockStore.profileAccess.get(profileId) ?? []).find(
+      (a) => a.role === "OWNER"
+    );
+    if (!owner) return null;
+    const membership = mockStore.memberships.get(owner.userId);
+    return membership ? { ...membership } : null;
+  }
+};
+
 // lib/data/aws/profile-repository.ts
 var import_server_only2 = __toESM(require_server_only_stub());
 var import_lib_dynamodb2 = require("@aws-sdk/lib-dynamodb");
@@ -21941,6 +22135,35 @@ var DynamoProfileRepository = class {
     if (!result.Item) return null;
     const profile = itemToProfile(result.Item);
     return profile.status === "DELETED" ? null : profile;
+  }
+  async updateContactDetails(profileId, input) {
+    const { doc, table } = this.deps();
+    const sets = [];
+    const values = {};
+    if (input.contactEmail !== void 0) {
+      sets.push("contactEmail = :ce");
+      values[":ce"] = input.contactEmail;
+    }
+    if (input.contactMobile !== void 0) {
+      sets.push("contactMobile = :cm");
+      values[":cm"] = input.contactMobile;
+    }
+    if (sets.length === 0) {
+      throw new Error("No contact fields provided.");
+    }
+    sets.push("updatedAt = :ts");
+    values[":ts"] = nowIso();
+    const result = await doc.send(
+      new import_lib_dynamodb2.UpdateCommand({
+        TableName: table,
+        Key: { PK: profilePk(profileId), SK: PROFILE_SK },
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW"
+      })
+    );
+    return itemToProfile(result.Attributes ?? {});
   }
   async getIdentity(profileId) {
     const { doc, table } = this.deps();
@@ -22250,6 +22473,94 @@ var DynamoDeviceRepository = class {
     const item = (result.Items ?? [])[0];
     return item ? itemToDevice(item) : null;
   }
+  /** Conditional dual-item status transition (assisted support, 2a). */
+  async transitionStatus(customerId, deviceId, to, allowedFrom) {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const existing = (await this.listForCustomer(customerId)).find(
+      (d) => d.deviceId === deviceId
+    );
+    if (!existing) throw new Error(`Device not found: ${deviceId}`);
+    if (!allowedFrom.includes(existing.status)) {
+      throw new Error(
+        `Device is ${existing.status} \u2014 this action requires ${allowedFrom.join("/")}.`
+      );
+    }
+    const fromChecks = allowedFrom.map((_, i) => `:f${i}`).join(", ");
+    const update = {
+      UpdateExpression: "SET #s = :s, #u = :u",
+      ConditionExpression: `#s IN (${fromChecks})`,
+      ExpressionAttributeNames: { "#s": "status", "#u": "updatedAt" },
+      ExpressionAttributeValues: {
+        ":s": to,
+        ":u": ts,
+        ...Object.fromEntries(allowedFrom.map((f, i) => [`:f${i}`, f]))
+      }
+    };
+    await doc.send(
+      new import_lib_dynamodb6.TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: table,
+              Key: { PK: devicePk(deviceId), SK: DEVICE_SK },
+              ...update
+            }
+          },
+          {
+            Update: {
+              TableName: table,
+              Key: { PK: profilePk(customerId), SK: deviceSkByProfile(deviceId) },
+              ...update
+            }
+          }
+        ]
+      })
+    );
+    return { ...existing, status: to, updatedAt: ts };
+  }
+  async suspendDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "SUSPENDED", ["ACTIVE"]);
+  }
+  async reactivateDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "ACTIVE", ["SUSPENDED"]);
+  }
+  async revokeDevice(customerId, deviceId) {
+    return this.transitionStatus(customerId, deviceId, "REVOKED", [
+      "PENDING",
+      "ACTIVE",
+      "SUSPENDED"
+    ]);
+  }
+  async issueReplacementDevice(customerId) {
+    const { doc, table } = this.deps();
+    const ts = nowIso();
+    const device = {
+      deviceId: `device_${crypto.randomUUID()}`,
+      profileId: customerId,
+      status: "PENDING",
+      token: generateDeviceToken(),
+      // canonical dvtk_ format — NEVER a bare UUID
+      activationCode: generateActivationCode(),
+      issuedAt: ts,
+      updatedAt: ts
+    };
+    await doc.send(
+      new import_lib_dynamodb6.TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: table,
+              Item: deviceItem(device),
+              ConditionExpression: "attribute_not_exists(PK)"
+            }
+          },
+          { Put: { TableName: table, Item: deviceByProfileItem(device) } }
+        ]
+      })
+    );
+    return device;
+  }
   async markCardActive(customerId) {
     const { doc, table } = this.deps();
     const ts = nowIso();
@@ -22519,6 +22830,20 @@ var DynamoPractitionerRepository = class {
     );
     return (result.Items ?? []).map(itemToPractitionerAccess);
   }
+  async listAccessForProfile(profileId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb10.QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": profilePk(profileId),
+          ":sk": PRACTITIONER_BY_PROFILE_PREFIX
+        }
+      })
+    );
+    return (result.Items ?? []).map(itemToPractitionerAccess);
+  }
   async createPractice(input) {
     const { doc, table } = this.deps();
     const ts = nowIso();
@@ -22747,6 +23072,105 @@ var DynamoPractitionerRepository = class {
   }
 };
 
+// lib/data/aws/note-repository.ts
+var import_server_only11 = __toESM(require_server_only_stub());
+var import_lib_dynamodb11 = require("@aws-sdk/lib-dynamodb");
+var DynamoNoteRepository = class {
+  constructor(injected) {
+    this.injected = injected;
+  }
+  deps() {
+    return this.injected ?? defaultDeps();
+  }
+  async add(note) {
+    const { doc, table } = this.deps();
+    try {
+      await doc.send(
+        new import_lib_dynamodb11.PutCommand({
+          TableName: table,
+          Item: opsNoteItem(note),
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+        return note;
+      }
+      throw error;
+    }
+    return note;
+  }
+  async listForSubject(subjectId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb11.QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": profilePk(subjectId),
+          ":sk": OPSNOTE_PREFIX_SK
+        },
+        ScanIndexForward: false
+        // newest first (SK sorts by createdAt)
+      })
+    );
+    return (result.Items ?? []).map(itemToOpsNote);
+  }
+};
+
+// lib/data/aws/family-repository.ts
+var import_server_only12 = __toESM(require_server_only_stub());
+var import_lib_dynamodb12 = require("@aws-sdk/lib-dynamodb");
+var DynamoFamilyRepository = class {
+  constructor(injected) {
+    this.injected = injected;
+  }
+  deps() {
+    return this.injected ?? defaultDeps();
+  }
+  async listFamilyAccess(profileId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb12.QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": profilePk(profileId),
+          ":sk": ACCESS_BY_PROFILE_PREFIX
+        }
+      })
+    );
+    return (result.Items ?? []).map(itemToProfileAccess);
+  }
+  async listFamilyInvites(profileId) {
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb12.QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": profilePk(profileId),
+          ":sk": FAMILY_INVITE_PREFIX_SK
+        }
+      })
+    );
+    return (result.Items ?? []).map(itemToFamilyInviteSummary);
+  }
+  async getMembershipForProfile(profileId) {
+    const access = await this.listFamilyAccess(profileId);
+    const owner = access.find((a) => a.role === "OWNER");
+    if (!owner) return null;
+    const { doc, table } = this.deps();
+    const result = await doc.send(
+      new import_lib_dynamodb12.GetCommand({
+        TableName: table,
+        Key: { PK: userPk(owner.userId), SK: MEMBERSHIP_SK }
+      })
+    );
+    return result.Item ? itemToMembership(result.Item) : null;
+  }
+};
+
 // lib/data/index.ts
 function pickMigrated(mock, aws) {
   return config.useMockData ? mock : aws;
@@ -22760,6 +23184,8 @@ var mockEmergency = new MockEmergencyProfileRepository();
 var mockAggregate = new MockAggregateRepository();
 var mockDirectory = new MockDirectoryRepository();
 var mockPractitioner = new MockPractitionerRepository();
+var mockNote = new MockNoteRepository();
+var mockFamily = new MockFamilyRepository();
 var awsProfile = new DynamoProfileRepository();
 var awsDocument = new DynamoDocumentRepository();
 var awsAudit = new DynamoAuditRepository();
@@ -22769,6 +23195,8 @@ var awsEmergency = new DynamoEmergencyProfileRepository();
 var awsAggregate = new DynamoAggregateRepository();
 var awsDirectory = new DynamoDirectoryRepository();
 var awsPractitioner = new DynamoPractitionerRepository();
+var awsNote = new DynamoNoteRepository();
+var awsFamily = new DynamoFamilyRepository();
 function getProfileRepository() {
   return pickMigrated(mockProfile, awsProfile);
 }

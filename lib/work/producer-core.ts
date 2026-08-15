@@ -39,6 +39,13 @@ export type WorkIntent = {
   customerId: string;
   /** Subject display name when the stream image carries it (practitioners). */
   subjectName?: string;
+  /**
+   * The triggering device for ISSUE_CARD intents. Device-scoped card ids let a
+   * REPLACEMENT card raise fresh work — the legacy `<customerId>-card` id
+   * would collide with the customer's original (completed) card work and the
+   * idempotent create would silently skip it.
+   */
+  deviceId?: string;
 };
 
 const str = (v: unknown): string | undefined =>
@@ -51,8 +58,16 @@ const ID_SUFFIX: Record<WorkIntent["workType"], string> = {
   APPROVE_PRACTITIONER: "practitioner",
 };
 
-/** Deterministic Work Item id for an intent (the idempotency key). */
+/**
+ * Deterministic Work Item id for an intent (the idempotency key). ISSUE_CARD
+ * ids are DEVICE-scoped so each physical card (original, replacement, …)
+ * raises its own work; legacy `<customerId>-card` items remain valid — the
+ * completion path matches by status, not id.
+ */
 export function producedWorkItemId(intent: WorkIntent): string {
+  if (intent.workType === "ISSUE_CARD" && intent.deviceId) {
+    return `${intent.deviceId}-card`;
+  }
   return `${intent.customerId}-${ID_SUFFIX[intent.workType]}`;
 }
 
@@ -80,8 +95,9 @@ export function workIntentForChange(change: StreamChange): WorkIntent | null {
     const status = str(img.status);
     const previous = str(change.oldImage?.status);
     const customerId = str(img.profileId);
+    const deviceId = str(img.deviceId);
     if (status === "PENDING" && previous !== "PENDING" && customerId) {
-      return { workType: "ISSUE_CARD", customerId };
+      return { workType: "ISSUE_CARD", customerId, deviceId };
     }
     return null;
   }
@@ -121,6 +137,23 @@ export type CardCompletion = {
  * the only legitimate trigger for completing ISSUE_CARD work and crossing the
  * Protected boundary — Ops dispatch never activates (operational truth).
  */
+/**
+ * Any device STATUS change is a Protected-boundary crossing candidate — both
+ * directions (2b ownership model): PENDING→ACTIVE, SUSPENDED→ACTIVE,
+ * ACTIVE→SUSPENDED, ACTIVE→REVOKED, and any future transition. The producer
+ * resolves the actual crossing from the customer's directory entry (before)
+ * vs current truth (after), so non-crossing changes no-op safely.
+ */
+export function deviceCrossingCandidate(change: StreamChange): string | null {
+  if (change.keys.SK !== DEVICE_SK) return null;
+  const img = change.newImage;
+  if (!img) return null; // REMOVE — devices are never removed by product paths
+  const status = str(img.status);
+  const previous = str(change.oldImage?.status);
+  if (status === previous) return null;
+  return str(img.profileId) ?? null;
+}
+
 export function cardCompletionForChange(
   change: StreamChange,
 ): CardCompletion | null {
