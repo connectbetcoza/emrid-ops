@@ -2,7 +2,7 @@
   "name": "emrid-ops",
   "version": "0.1.0",
   "private": true,
-  "description": "EMRID Operations \u2014 the cloud-native operational platform for the EMRID healthcare identity programme.",
+  "description": "EMRID Operations — the cloud-native operational platform for the EMRID healthcare identity programme.",
   "engines": {
     "node": ">=20.9.0"
   },
@@ -23,7 +23,7 @@
     "aws-jwt-verify": "^5.2.1",
     "clsx": "2.1.1",
     "lucide-react": "0.414.0",
-    "next": "^15.5.19",
+    "next": "^15.5.25",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwind-merge": "2.4.0",
@@ -36,15 +36,19 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "10.4.19",
     "eslint": "8.57.0",
-    "eslint-config-next": "^15.5.19",
+    "eslint-config-next": "^15.5.25",
     "postcss": "^8.5.10",
     "tailwindcss": "3.4.6",
     "typescript": "5.5.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "postcss": "^8.5.10",
-    "sharp": "^0.35.3",
-    "brace-expansion": "^5.0.9"
-  }
+    "sharp": "^0.35.4",
+    "brace-expansion": "^5.0.9",
+    "browserslist": "^4.28.7",
+    "baseline-browser-mapping": "^2.11.0",
+    "js-yaml": "^4.3.2"
+  },
+  "packageManager": "npm@11.6.0+sha512.77f3fb0dbbd881835d7bd1217deabdf7ed77fc4ec4f363df64fc3cb986404abf6c437661041080f5c5d225103508e7c9ea30cb2742b7e942675d05a10af2d7b9"
 }
