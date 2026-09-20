@@ -173,3 +173,23 @@ Engineering cannot see live AWS state; the following are ASSUMPTIONS the operato
 - `GET /api/health` on both apps: secret-free `{ ok, mock: {auth,data,uploads}, ... }`. After EVERY deploy confirm `mock.*` are all `false` (Ops also reports `cognitoConfigured: true`). This replaces log-diving for the `resolved config` line.
 - Deployment notifications: enable Amplify build notifications (console → App settings → Notifications) to email on build failure for both apps.
 - Rollback: unchanged (redeploy previous Amplify build; apps are stateless; Lambda rollback = re-upload previous producer.zip; table untouched).
+
+## 16. Context-reset pointer + PENDING DEPLOYMENT (2026-08-28)
+
+The engineering session that built everything through commit `2121eb7` has been retired.
+**The authoritative current-state package for any new engineering session is
+`docs/context/EMRID_OPS_CURRENT_STATE.md`** — read it before acting on anything above
+(historical sections of this file describe operator steps that may already be done).
+
+**Outstanding operator work at the time of the reset:**
+1. **Deploy the producer Lambda** from `producer.zip` @ `2121eb7` — 178,189 bytes,
+   SHA-256 `0cc36aeb5d05459349cc8dacc5d5c34b9dd3a500e7a8d7585748edc8a40c8642`.
+   This bundle moves ALL device-driven Protected-Lives crossings into the producer;
+   until it is live, do NOT use the new Ops "Device assistance" actions (the app
+   deliberately no longer adjusts the aggregate for device changes).
+2. **Deploy Ops Amplify** (`main` @ `2121eb7`), verify `GET /api/health`.
+3. **Run the CMS Stage 2 live certification** (checklist in the context package §23).
+4. Still open from earlier handoffs, if not already done: §13 alarms/metric filters,
+   `EDGE_PROTECTION_RUNBOOK.md` WAF attach, §14 PITR/S3-versioning verification,
+   www.emrid.co.za cutover + card re-encoding completion (Option B), and the live
+   checks listed as PARTIAL in the context package §17.

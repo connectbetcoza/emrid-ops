@@ -245,6 +245,9 @@ export function itemToDevice(item: Record<string, unknown>): Device {
   return {
     deviceId: String(item.deviceId),
     profileId: String(item.profileId),
+    // Written by the Patient Platform. Absent on rows predating the Digital
+    // Medical ID — `isPhysicalDevice` treats that as physical.
+    deviceType: item.deviceType as Device["deviceType"],
     status: item.status as Device["status"],
     token: String(item.token),
     activationCode: str(item.activationCode),

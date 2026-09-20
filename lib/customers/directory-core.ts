@@ -1,9 +1,11 @@
-import type {
-  AuditEvent,
-  Device,
-  DirectoryEntry,
-  EmergencyProfile,
-  Profile,
+import {
+  cardActiveFacet,
+  isPhysicalDevice,
+  type AuditEvent,
+  type Device,
+  type DirectoryEntry,
+  type EmergencyProfile,
+  type Profile,
 } from "@/lib/data/entities";
 import type { WorkItemRecord } from "@/lib/data/work-record";
 import type { CardStatus, Customer, IdentityStatus } from "@/lib/customers/types";
@@ -48,7 +50,34 @@ export function customerFromState(input: {
   devices: Device[];
 }): Customer {
   const { profile, emergency, devices } = input;
-  const device = devices.find((d) => d.status === "ACTIVE") ?? devices[0];
+  /*
+   * cardStatus counts PHYSICAL products only — a deliberate decision, not a
+   * side effect of the reduction below.
+   *
+   * It feeds the "Card active" readiness factor (weight 15) and the cardActive
+   * facet of Protection Status, which drives the Protected Lives aggregate.
+   * That metric means an identity-verified, physically-shipped credential;
+   * counting a Digital Medical ID would restate the north-star figure for
+   * customers who never received a card.
+   *
+   * The ACTIVE case goes through `cardActiveFacet`, which the Work Engine's
+   * boundary detection also uses. That shared call is the point: if this
+   * projection and the producer ever disagreed about what "card active" means,
+   * the Protected-Lives delta would ratchet — each device change emitting an
+   * increment the next directory refresh silently takes back.
+   *
+   * To make a wallet pass confer protection, change `cardActiveFacet` — once —
+   * and expect the aggregate to need a reconciliation run.
+   */
+  const physical = devices.filter(isPhysicalDevice);
+  const device = physical.find((d) => d.status === "ACTIVE") ?? physical[0];
+  // Cross-check against the shared facet so this projection can never drift
+  // from the Work Engine's Protected-Lives detection, which uses it directly.
+  const cardStatus: CardStatus = cardActiveFacet(devices)
+    ? "ACTIVE"
+    : device
+      ? TO_CARD_STATUS[device.status]
+      : "NONE";
   return {
     id: profile.profileId,
     fullName: `${profile.firstName} ${profile.lastName}`.trim(),
@@ -63,7 +92,7 @@ export function customerFromState(input: {
       "UNVERIFIED",
     emergencyInfoComplete: hasEmergencyInfo(emergency),
     emergencyContactsCount: emergencyContactCount(emergency),
-    cardStatus: device ? TO_CARD_STATUS[device.status] : "NONE",
+    cardStatus,
   };
 }
 

@@ -13,7 +13,8 @@ import { DEVICE_SK, PRACTITIONER_SK, PROFILE_SK } from "@/lib/data/aws/keys";
  *
  * Scope (the only two safely-derivable signals):
  *   • a Profile reaching identity status PENDING  → VERIFY_IDENTITY
- *   • a Device reaching status PENDING (card requested) → ISSUE_CARD
+ *   • a PHYSICAL Device reaching status PENDING (card requested) → ISSUE_CARD
+ *     (WALLET_PASS devices are excluded — nothing to encode or dispatch)
  *
  * Idempotency is by DETERMINISTIC id: the same customer + work kind always maps
  * to the same `workItemId` (matching the readiness generator's `<id>-<factor>`
@@ -96,7 +97,20 @@ export function workIntentForChange(change: StreamChange): WorkIntent | null {
     const previous = str(change.oldImage?.status);
     const customerId = str(img.profileId);
     const deviceId = str(img.deviceId);
-    if (status === "PENDING" && previous !== "PENDING" && customerId) {
+    // A WALLET_PASS is the customer's Digital Medical ID, not a physical
+    // product: there is no card to encode, no chip to tap-test and nothing to
+    // dispatch. Raising ISSUE_CARD for one would put a fulfilment officer on a
+    // card that does not exist, and the item could never reach WAITING. The
+    // stream image carries the whole Device (deviceItem spreads it), so the
+    // type is available here. Absent type ⇒ a row predating the Digital
+    // Medical ID ⇒ physical, which preserves existing behaviour.
+    const isWalletPass = str(img.deviceType) === "WALLET_PASS";
+    if (
+      status === "PENDING" &&
+      previous !== "PENDING" &&
+      customerId &&
+      !isWalletPass
+    ) {
       return { workType: "ISSUE_CARD", customerId, deviceId };
     }
     return null;
@@ -164,6 +178,19 @@ export function cardCompletionForChange(
   const previous = str(change.oldImage?.status);
   const customerId = str(img.profileId);
   const deviceId = str(img.deviceId);
+  // A WALLET_PASS must never complete card fulfilment work.
+  //
+  // This guard matters MORE than the one in `workIntentForChange`, not less. A
+  // Digital Medical ID is born ACTIVE (it has no activation code, so nothing
+  // could ever activate it later), which lands it straight in this branch on
+  // INSERT. And `completeCardWork` matches an open ISSUE_CARD item by work
+  // TYPE and non-terminal status — not by deviceId — so without this a
+  // customer adding a wallet pass would silently mark their physical card
+  // DONE, remove it from the Card Fulfilment queue, and write a
+  // CARD_ACTIVATED audit trigger for a card nobody ever encoded or posted.
+  //
+  // Absent type ⇒ a row predating the Digital Medical ID ⇒ physical.
+  if (str(img.deviceType) === "WALLET_PASS") return null;
   if (status === "ACTIVE" && previous !== "ACTIVE" && customerId && deviceId) {
     return { customerId, deviceId };
   }

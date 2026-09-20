@@ -19,6 +19,7 @@ import {
 import type { OpsRole } from "@/types";
 import { OPS_AUDIT_EVENT } from "@/lib/work/audit";
 import { protectionStatusFromFacets } from "@/lib/customers/readiness";
+import { cardActiveFacet } from "@/lib/data/entities";
 import { hasEmergencyInfo } from "@/lib/customers/facets";
 import {
   crossesProtectedBoundary,
@@ -99,7 +100,10 @@ export async function executeTransition(
       deps.emergencyRepo.getEmergencyProfile(cid),
     ]);
     const identityVerified = profile?.identityVerificationStatus === "VERIFIED";
-    const cardActive = devices.some((d) => d.status === "ACTIVE");
+    // Shared facet — a Digital Medical ID must not make a customer PROTECTED
+    // here either, or verifying their identity would cross the boundary while
+    // the directory entry (which filters) still reads "In progress".
+    const cardActive = cardActiveFacet(devices);
     const emergencyPresent = hasEmergencyInfo(emergency);
 
     const before = protectionStatusFromFacets({

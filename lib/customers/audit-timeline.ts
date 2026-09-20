@@ -14,6 +14,7 @@ import {
   UserMinus,
   UserPlus,
   Users,
+  Wallet,
 } from "lucide-react";
 import type { AuditEvent, AuditActorType } from "@/lib/data/entities";
 import type { TimelineEvent } from "@/components/workspace/TimelineArea";
@@ -66,6 +67,11 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon }> = {
   PRACTITIONER_ACCESS_REVOKED: { label: "Practitioner access revoked", icon: ShieldX },
   PRACTITIONER_PROFILE_VIEWED: { label: "Record viewed by practitioner", icon: Eye },
   PRACTITIONER_DOCUMENT_DOWNLOADED: { label: "Document downloaded by practitioner", icon: Download },
+  // Digital Medical ID (wallet pass) — Patient-owned. Curated here so support
+  // sees what happened rather than the humanised-type fallback; "revoked"
+  // means the QR stopped resolving, NOT that the pass left the phone.
+  WALLET_PASS_ISSUED: { label: "Digital Medical ID added to a wallet", icon: Wallet },
+  WALLET_PASS_REVOKED: { label: "Digital Medical ID revoked", icon: ShieldX },
   // Practitioner-assisted onboarding + claim.
   PATIENT_ONBOARDED_BY_PRACTITIONER: { label: "Onboarded by practitioner", icon: UserPlus },
   ONBOARDING_CLAIM_ISSUED: { label: "Account claim link issued", icon: Mail },

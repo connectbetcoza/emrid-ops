@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect } from "vitest";
 import {
   buildProducedWorkItem,
+  cardCompletionForChange,
   producedWorkItemId,
   workIntentForChange,
   type StreamChange,
@@ -103,6 +104,105 @@ describe("workIntentForChange", () => {
       workType: "ISSUE_CARD",
       customerId: "CUS-9001",
     });
+  });
+
+  it("does NOT raise ISSUE_CARD for a WALLET_PASS reaching PENDING (legacy shape)", () => {
+    // Regression guard for the deployed stream Lambda: a Digital Medical ID
+    // has no card to encode, tap-test or dispatch, so it must never enter the
+    // Card Fulfilment queue. Without this the item would also sit unresolved
+    // forever, because only a customer activation completes ISSUE_CARD work.
+    const change: StreamChange = {
+      eventName: "INSERT",
+      keys: { PK: "DEVICE#dev-pass", SK: "DEVICE" },
+      newImage: {
+        profileId: "CUS-9001",
+        deviceId: "dev-pass",
+        deviceType: "WALLET_PASS",
+        status: "PENDING",
+      },
+      oldImage: null,
+    };
+    expect(workIntentForChange(change)).toBeNull();
+  });
+
+  it("still raises ISSUE_CARD for an explicitly physical device type", () => {
+    const change: StreamChange = {
+      eventName: "INSERT",
+      keys: { PK: "DEVICE#dev-2", SK: "DEVICE" },
+      newImage: {
+        profileId: "CUS-9001",
+        deviceId: "dev-2",
+        deviceType: "CARD",
+        status: "PENDING",
+      },
+      oldImage: null,
+    };
+    expect(workIntentForChange(change)).toEqual({
+      workType: "ISSUE_CARD",
+      customerId: "CUS-9001",
+      deviceId: "dev-2",
+    });
+  });
+
+  it("does NOT complete card work when a WALLET_PASS is inserted ACTIVE", () => {
+    /*
+     * THE state a Digital Medical ID is actually born in. It carries no
+     * activation code — nothing could ever activate it later — so the patient
+     * platform issues it ACTIVE, which lands it straight in
+     * cardCompletionForChange rather than in workIntentForChange.
+     *
+     * Without the guard, `completeCardWork` (which matches an open ISSUE_CARD
+     * item by work TYPE and non-terminal status, NOT by deviceId) would mark
+     * the customer's real physical card DONE, drop it out of the Card
+     * Fulfilment queue and write a CARD_ACTIVATED trigger for a card nobody
+     * encoded or posted.
+     */
+    const change: StreamChange = {
+      eventName: "INSERT",
+      keys: { PK: "DEVICE#dev-pass", SK: "DEVICE" },
+      newImage: {
+        profileId: "CUS-9001",
+        deviceId: "dev-pass",
+        deviceType: "WALLET_PASS",
+        status: "ACTIVE",
+      },
+      oldImage: null,
+    };
+    expect(cardCompletionForChange(change)).toBeNull();
+    expect(workIntentForChange(change)).toBeNull();
+  });
+
+  it("still completes card work for a physical device reaching ACTIVE", () => {
+    expect(
+      cardCompletionForChange({
+        eventName: "MODIFY",
+        keys: { PK: "DEVICE#dev-card", SK: "DEVICE" },
+        newImage: {
+          profileId: "CUS-9001",
+          deviceId: "dev-card",
+          deviceType: "CARD",
+          status: "ACTIVE",
+        },
+        oldImage: { status: "PENDING" },
+      }),
+    ).toEqual({ customerId: "CUS-9001", deviceId: "dev-card" });
+  });
+
+  it("still completes card work for a legacy device with no deviceType", () => {
+    // Rows predating the Digital Medical ID are all physical cards and must
+    // keep their behaviour exactly.
+    expect(
+      cardCompletionForChange({
+        eventName: "MODIFY",
+        keys: { PK: "DEVICE#dev-legacy", SK: "DEVICE" },
+        newImage: {
+          profileId: "CUS-9001",
+          deviceId: "dev-legacy",
+          status: "ACTIVE",
+        },
+        oldImage: { status: "PENDING" },
+      }),
+    ).toEqual({ customerId: "CUS-9001", deviceId: "dev-legacy" });
   });
 
   it("does not re-fire when identity was already PENDING", () => {

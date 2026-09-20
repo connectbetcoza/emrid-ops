@@ -26,6 +26,7 @@ import type {
   AuditEvent,
   AuditTargetType,
   DeviceStatus,
+  DeviceType,
   DocumentCategory,
   DocumentStatus,
   EmergencyProfile,
@@ -173,6 +174,13 @@ const DEVICE_STATUSES: Record<DeviceStatus, true> = {
   REPLACED: true,
   REVOKED: true,
 };
+const DEVICE_TYPES: Record<DeviceType, true> = {
+  CARD: true,
+  KEYRING: true,
+  STICKER: true,
+  BRACELET: true,
+  WALLET_PASS: true,
+};
 const AUDIT_TARGET_TYPES: Record<AuditTargetType, true> = {
   USER: true,
   PROFILE: true,
@@ -192,6 +200,9 @@ const AUDIT_ACTOR_TYPES: Record<AuditActorType, true> = {
 
 describe("shared entity enum values (reconciled with the Patient Platform)", () => {
   it("pins each reconciled enum value set", () => {
+    expect(Object.keys(DEVICE_TYPES).sort()).toEqual(
+      ["BRACELET", "CARD", "KEYRING", "STICKER", "WALLET_PASS"],
+    );
     expect(Object.keys(PROFILE_STATUSES).sort()).toEqual(
       ["ACTIVE", "DELETED", "INACTIVE", "LEGACY"],
     );

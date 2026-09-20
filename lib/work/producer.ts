@@ -22,6 +22,7 @@ import {
 import { parseStreamRecord } from "@/lib/work/stream";
 import { buildDirectoryEntry } from "@/lib/customers/directory-core";
 import { protectionStatusFromFacets } from "@/lib/customers/readiness";
+import { cardActiveFacet } from "@/lib/data/entities";
 import { hasEmergencyInfo } from "@/lib/customers/facets";
 import {
   crossesProtectedBoundary,
@@ -162,7 +163,11 @@ export async function applyDeviceCrossing(
   if (!profile) return;
   const after = protectionStatusFromFacets({
     identityVerified: profile.identityVerificationStatus === "VERIFIED",
-    cardActive: devices.some((d) => d.status === "ACTIVE"),
+    // Shared facet — see cardActiveFacet. The "before" here comes from the
+    // stored directory entry, which computes cardActive the same way; if the
+    // two ever diverge the Protected-Lives delta ratchets, because each change
+    // re-emits an increment that the next refresh silently reverses.
+    cardActive: cardActiveFacet(devices),
     emergencyPresent: hasEmergencyInfo(emergency),
   });
 

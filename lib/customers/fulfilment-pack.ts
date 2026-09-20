@@ -1,4 +1,9 @@
-import type { AuditEvent, Device, DeviceStatus } from "@/lib/data/entities";
+import {
+  isPhysicalDevice,
+  type AuditEvent,
+  type Device,
+  type DeviceStatus,
+} from "@/lib/data/entities";
 
 /**
  * Card Fulfilment Pack — pure derivation of everything a fulfilment officer
@@ -67,12 +72,19 @@ export function buildFulfilmentPack(input: {
 /**
  * The device fulfilment concerns: the PENDING card being fulfilled first, else
  * an ACTIVE card (pack doubles as a reference), else whatever exists.
+ *
+ * WALLET_PASS devices are filtered out FIRST. A wallet pass has no chip to
+ * encode and no activation code to print, so handing one to a fulfilment
+ * officer as "the card" would give them a token to burn onto plastic that the
+ * customer already carries digitally. A customer whose ONLY device is a wallet
+ * pass has no card being fulfilled, and correctly gets no pack.
  */
 export function fulfilmentDevice(devices: Device[]): Device | null {
+  const physical = devices.filter(isPhysicalDevice);
   return (
-    devices.find((d) => d.status === "PENDING") ??
-    devices.find((d) => d.status === "ACTIVE") ??
-    devices[0] ??
+    physical.find((d) => d.status === "PENDING") ??
+    physical.find((d) => d.status === "ACTIVE") ??
+    physical[0] ??
     null
   );
 }

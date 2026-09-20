@@ -1,6 +1,6 @@
 import "server-only";
 import { QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import type { Device } from "@/lib/data/entities";
+import { isPhysicalDevice, type Device } from "@/lib/data/entities";
 import type { DeviceRepository } from "@/lib/data/types";
 import { defaultDeps, type DynamoDeps } from "@/lib/data/aws/client";
 import {
@@ -139,6 +139,11 @@ export class DynamoDeviceRepository implements DeviceRepository {
     const device: Device = {
       deviceId: `device_${crypto.randomUUID()}`,
       profileId: customerId,
+      // A replacement is always a physical card. Writing the type explicitly
+      // matters: the Patient Platform reads it through an exhaustive
+      // Record<DeviceType, …> for the label and icon, so an absent value
+      // renders `undefined` and throws when the icon is constructed.
+      deviceType: "CARD",
       status: "PENDING",
       token: generateDeviceToken(), // canonical dvtk_ format — NEVER a bare UUID
       activationCode: generateActivationCode(),
@@ -165,7 +170,17 @@ export class DynamoDeviceRepository implements DeviceRepository {
   async markCardActive(customerId: string): Promise<Device> {
     const { doc, table } = this.deps();
     const ts = nowIso();
-    const existing = (await this.listForCustomer(customerId))[0];
+    // PHYSICAL devices only, and prefer the one actually being fulfilled.
+    // The previous `[0]` was raw SK (deviceId lexicographic) order, so with a
+    // Digital Medical ID in the partition "activate the card" could activate
+    // the wallet pass instead of the card the officer just dispatched.
+    const physical = (await this.listForCustomer(customerId)).filter(
+      isPhysicalDevice,
+    );
+    const existing =
+      physical.find((d) => d.status === "PENDING") ??
+      physical.find((d) => d.status === "SUSPENDED") ??
+      physical[0];
 
     if (existing) {
       const updated: Device = {
@@ -206,10 +221,15 @@ export class DynamoDeviceRepository implements DeviceRepository {
     }
 
     const device: Device = {
-      deviceId: `dev-${customerId}-${crypto.randomUUID().slice(0, 8)}`,
+      deviceId: `device_${crypto.randomUUID()}`,
       profileId: customerId,
+      deviceType: "CARD",
       status: "ACTIVE",
-      token: crypto.randomUUID(),
+      // Canonical dvtk_ format. This previously minted a bare randomUUID,
+      // which is not a valid EMRID device token: the Patient Platform's
+      // resolver matches GSI1 `TOKEN#<token>` exactly and its own generator
+      // only ever emits `dvtk_`-prefixed Crockford base32.
+      token: generateDeviceToken(),
       issuedAt: ts,
       activatedAt: ts,
       updatedAt: ts,

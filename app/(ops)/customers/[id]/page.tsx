@@ -143,24 +143,26 @@ export default async function CustomerWorkspacePage({
   // stay visible after fulfilment completes, for replacements and support.
   // Assembled from repository state (device + profile EMRID + the device's tap
   // audit trail); fulfilmentDevice prefers PENDING, then ACTIVE, then any.
+  //
+  // Gated on the FULFILMENT DEVICE, not the raw device count. A customer whose
+  // only device is a Digital Medical ID has no card being fulfilled, so
+  // fulfilmentDevice returns null — and gating on `devices.length > 0` would
+  // render the pack's empty state ("No device issued yet…") directly above a
+  // Devices card listing their active Digital Medical ID.
   let fulfilmentPack: FulfilmentPack | null = null;
-  let showFulfilmentPack = false;
-  if (devices.length > 0) {
-    showFulfilmentPack = true;
+  const fulfilmentTarget = fulfilmentDevice(devices);
+  if (fulfilmentTarget) {
     const profile = await getProfileRepository().getProfile(customer.id);
-    const device = fulfilmentDevice(devices);
-    if (device) {
-      const deviceEvents = await getAuditRepository().listForTarget(
-        "DEVICE",
-        device.deviceId,
-      );
-      fulfilmentPack = buildFulfilmentPack({
-        emrid: profile?.emrid ?? customer.id,
-        device,
-        deviceEvents,
-        patientBaseUrl: config.patientAppUrl,
-      });
-    }
+    const deviceEvents = await getAuditRepository().listForTarget(
+      "DEVICE",
+      fulfilmentTarget.deviceId,
+    );
+    fulfilmentPack = buildFulfilmentPack({
+      emrid: profile?.emrid ?? customer.id,
+      device: fulfilmentTarget,
+      deviceEvents,
+      patientBaseUrl: config.patientAppUrl,
+    });
   }
 
   return (
@@ -190,7 +192,7 @@ export default async function CustomerWorkspacePage({
           <>
             <ReadinessCard result={readiness} />
             <SummaryPanel items={customerSummary(customer)} />
-            {showFulfilmentPack ? (
+            {fulfilmentPack ? (
               <CardFulfilmentPack pack={fulfilmentPack} />
             ) : null}
             <DevicesCard devices={devices} />

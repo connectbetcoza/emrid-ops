@@ -3,7 +3,12 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate } from "@/lib/format";
-import type { Device, DeviceStatus } from "@/lib/data/entities";
+import {
+  DEVICE_TYPE_LABEL,
+  DEVICE_TYPE_LABEL_UNKNOWN,
+  type Device,
+  type DeviceStatus,
+} from "@/lib/data/entities";
 
 /** Exhaustive device-status display metadata (Rule 9). */
 const DEVICE_STATUS_META: Record<DeviceStatus, { label: string; tone: BadgeTone }> = {
@@ -15,9 +20,14 @@ const DEVICE_STATUS_META: Record<DeviceStatus, { label: string; tone: BadgeTone 
 };
 
 /**
- * The customer's NFC devices — a support read over repository state. Tokens
- * and activation codes stay in the Card Fulfilment Pack (shown only during
- * active card work); support sees status and dates, not secrets.
+ * The customer's devices — a support read over repository state. Tokens and
+ * activation codes stay in the Card Fulfilment Pack (shown only during active
+ * card work); support sees status and dates, not secrets.
+ *
+ * The type is shown because a customer can hold both physical products and a
+ * Digital Medical ID (a wallet pass). During a "my phone was stolen" call the
+ * difference decides what containment actually means, so support must not have
+ * to infer it from the device id.
  */
 export function DevicesCard({ devices }: { devices: Device[] }) {
   return (
@@ -40,6 +50,11 @@ export function DevicesCard({ devices }: { devices: Device[] }) {
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">
+                    {device.deviceType
+                      ? DEVICE_TYPE_LABEL[device.deviceType]
+                      : DEVICE_TYPE_LABEL_UNKNOWN}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
                     {device.deviceId}
                   </p>
                   <p className="text-xs text-muted-foreground">

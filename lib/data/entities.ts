@@ -99,9 +99,77 @@ export type DocumentMetadata = {
  */
 export type DeviceStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "REVOKED" | "REPLACED";
 
+/**
+ * MIRROR of the Patient Platform's `types/device.ts` DeviceType. Keep in sync.
+ *
+ * WALLET_PASS is NOT a physical product: it is the customer's Digital Medical ID
+ * living in Apple/Google/Samsung Wallet. It has no card to encode, no chip to
+ * tap-test and nothing to dispatch, so it must be excluded everywhere Ops
+ * reasons about *card fulfilment* — see `isPhysicalDevice`.
+ */
+export type DeviceType =
+  | "CARD"
+  | "KEYRING"
+  | "STICKER"
+  | "BRACELET"
+  | "WALLET_PASS";
+
+/** Exhaustive device-type display labels (Rule 9). */
+export const DEVICE_TYPE_LABEL: Record<DeviceType, string> = {
+  CARD: "Card",
+  KEYRING: "Keyring",
+  STICKER: "Sticker",
+  BRACELET: "Bracelet",
+  WALLET_PASS: "Digital Medical ID",
+};
+
+/** Label for a device whose type predates the Digital Medical ID. */
+export const DEVICE_TYPE_LABEL_UNKNOWN = "Card";
+
+/**
+ * Is this a physical product Ops can encode, tap-test and dispatch?
+ *
+ * Devices written before `deviceType` existed have no value for it. Those are
+ * all physical cards (the wallet pass did not exist yet), so an absent type is
+ * treated as physical — the safe default, because it preserves the fulfilment
+ * behaviour those rows already had.
+ */
+export function isPhysicalDevice(device: Pick<Device, "deviceType">): boolean {
+  return device.deviceType !== "WALLET_PASS";
+}
+
+/**
+ * The `cardActive` protection facet — THE single definition.
+ *
+ * Every surface that asks "is this customer's card active?" must route through
+ * here: the Customer Directory projection, the Work Engine's Protected-Lives
+ * boundary detection, and the identity-decision transition. They feed the same
+ * `protectionStatusFromFacets`, so if any one of them counts a different set
+ * of devices the dashboard's Protected Lives figure and the customer's own
+ * Protection badge start disagreeing — and because the producer compares a
+ * stored "before" against a freshly computed "after", the disagreement
+ * RATCHETS: each device change adds another increment that nothing takes back.
+ *
+ * A Digital Medical ID does not count. Protected Lives was defined to mean an
+ * identity-verified, physically-shipped credential; a wallet pass moving that
+ * figure would silently restate the north-star metric. Changing that decision
+ * means changing it HERE, once.
+ */
+export function cardActiveFacet(
+  devices: readonly Pick<Device, "deviceType" | "status">[],
+): boolean {
+  return devices.some((d) => isPhysicalDevice(d) && d.status === "ACTIVE");
+}
+
 export type Device = {
   deviceId: string;
   profileId: string;
+  /**
+   * Absent on devices written before the Digital Medical ID shipped. Read it
+   * through `isPhysicalDevice` rather than comparing directly, so legacy rows
+   * keep their historical (physical) behaviour.
+   */
+  deviceType?: DeviceType;
   status: DeviceStatus;
   token: string;
   /**

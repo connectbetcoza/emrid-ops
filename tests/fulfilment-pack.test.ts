@@ -111,4 +111,34 @@ describe("fulfilmentDevice", () => {
     expect(fulfilmentDevice([revoked])?.deviceId).toBe("d-revoked");
     expect(fulfilmentDevice([])).toBeNull();
   });
+
+  it("never selects a WALLET_PASS, even when it is the only PENDING device", () => {
+    // A wallet pass has no chip to encode and no code to print. Selecting one
+    // would hand a fulfilment officer a token to burn onto plastic that the
+    // customer already carries digitally.
+    const pass = device({
+      deviceId: "d-pass",
+      deviceType: "WALLET_PASS",
+      status: "PENDING",
+    });
+    const card = device({
+      deviceId: "d-card",
+      deviceType: "CARD",
+      status: "ACTIVE",
+    });
+    expect(fulfilmentDevice([pass, card])?.deviceId).toBe("d-card");
+  });
+
+  it("returns null when the customer's only device is a WALLET_PASS", () => {
+    const pass = device({ deviceId: "d-pass", deviceType: "WALLET_PASS" });
+    expect(fulfilmentDevice([pass])).toBeNull();
+  });
+
+  it("treats a device with no deviceType as physical (legacy rows)", () => {
+    // Rows written before the Digital Medical ID shipped carry no type, and
+    // every one of them is a physical card. They must keep their behaviour.
+    const legacy = device({ deviceId: "d-legacy" });
+    expect(legacy.deviceType).toBeUndefined();
+    expect(fulfilmentDevice([legacy])?.deviceId).toBe("d-legacy");
+  });
 });
